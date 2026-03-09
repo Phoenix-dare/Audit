@@ -1,0 +1,162 @@
+AUDIT LOGIC SPEC (SOURCE: 09.10.2024 (1).accdb)
+=================================================
+
+Source Database
+---------------
+- File: 09.10.2024 (1).accdb
+- Purpose: Engineering work bill audit and deduction computation.
+- Primary master entities: Contractor, Budget, Head_of_Account.
+- Primary transaction entity: work.
+
+Core Tables (functional view)
+-----------------------------
+1) Contractor
+- GST NO
+- NAME OF CONTRACTOR
+- ADDRESS
+- PAN NO
+
+2) Budget
+- Budget_Code
+- Head_Account
+- Allocation
+- Balance
+
+3) Extra Item
+- Id
+- agno
+- Item_No
+- Estimate_Qty
+- Actual_Qty
+- unit
+
+4) work (main processing table)
+- Agreement/Work refs: agno, agdate, won, wod, wn, mb, p, brn, cn, tsn, tsdate, asno, asdate
+- Dates for delay logic: doc, adoc, closing Date
+- Party/type flags: ccpf (Final/Part), ccn (I/II/III/IV), coy (Company/Person), ued
+- Amounts: pac, ba, Base_Amount, gst, it, wwc, retention, fine, fineagr, E_Charge
+- Derived totals: dwoit, wit, eh
+- Budget linkage: Budget_Code, Expenditure, Balance/Bal, Need
+- Misc: NLC, days, textatend, gst_tobe_deducted, pac_tobe_deducted, fine_addl, Ex_item
+
+Business Workflow (high level)
+------------------------------
+1) User enters/loads work bill fields.
+2) System computes deduction components (GST, IT, WWC, retention, fines).
+3) System computes payable summary fields.
+4) If budget impact is enabled (Need <> 0), system updates expenditure/balance snapshot fields in record context.
+5) Report generation logic adjusts visual fields based on form flags.
+
+Detailed Calculation Logic (from VBA)
+-------------------------------------
+A) Base value prep
+- Amt = pac
+- bv = ba - pac
+- bv = IIf(bv < 0, 0, bv)
+- ba = IIf(ba > pac, pac, ba)
+
+B) NLC flag
+- NLC = IIf(ccpf = 'Final', 'Yes', 'Part Bill')
+
+C) GST
+- Initialize gst = 0
+- If ccpf = 'Final' AND ba > 250000:
+  gst = Base_Amount * 0.02
+- If (ccpf = 'Part' OR ccn <> 'I') AND pac > 250000:
+  gst = Base_Amount * 0.02
+- Round gst (nearest integer)
+
+D) Income Tax (IT)
+- If coy = 'Company':
+  it = Base_Amount * 0.02
+- Else:
+  it = Base_Amount * 0.01
+- Round it (nearest integer)
+
+E) WWC
+- wwc = Base_Amount * 0.01
+- Round wwc (nearest integer)
+
+F) Retention
+- retention = IIf(ccpf = 'Part', Base_Amount * 0.025, 0)
+- Round retention (nearest integer)
+
+G) Delay fine for completion (fine)
+- fine = 0
+- dc = DateDiff('d', doc, adoc)
+- days = dc
+- If days > 0 AND ccpf = 'Final':
+  fine = (0.01 * pac) * Int(days / 7)
+- If (days Mod 7) > 0:
+  fine = fine + (0.01 * pac)
+- Cap rule:
+  fine = IIf(fine > (0.1 * pac), 100000, fine)
+- If ued = 'No':
+  fine = 0
+- Round fine (nearest integer)
+
+H) Agreement-delay fine (fineagr)
+- delay = DateDiff('d', wod, agdate)
+- fineagr = IIf(delay > 14 AND ccpf = 'Final', pac * 0.01, 0)
+- Minimum floor:
+  fineagr = IIf(fineagr > 0 AND fineagr < 1000, 1000, fineagr)
+- If ued = 'No':
+  fineagr = 0
+- Round fineagr (nearest integer)
+
+I) Deduction + payable totals
+- dwoit = retention + fineagr + fine + gst + wwc + E_Charge
+- wit   = ba - (dwoit + it)
+- eh    = it + wit
+
+J) Budget-impact block (when Need <> 0)
+- Ensure fields are not null:
+  Expenditure = IIf(IsNull(Expenditure), 0, Expenditure)
+  Balance     = IIf(IsNull(Balance), 0, Balance)
+  Bal         = IIf(IsNull(Bal), 0, Bal)
+- Recompute:
+  Expenditure = (Allocation - Balance) + ba
+  Balance     = Balance - ba
+  Bal         = Balance
+
+Supporting Utility Logic
+------------------------
+1) Number-to-words function (Indian system)
+- Converts numeric amount into text with Thousand/Lakh/Crore and Paise.
+- Returns strings like:
+  - 'Rupees ... and ... Paise Only'
+  - or only rupees/paise variants.
+
+2) Report UI toggling
+- Report fields (e.g., Text127/Text129/Text130) are set white by default.
+- Based on form flag (Check102/open arg), color switches to black for visibility in selected mode.
+
+Data Quality Notes for MERN Migration
+-------------------------------------
+- Some records have null/blank fields in ccpf, doc, Base_Amount.
+- At least one abnormal doc year appears in legacy data entry.
+- Input validation in MERN should enforce:
+  - required date ranges
+  - enum checks for ccpf/ccn/coy
+  - non-negative numerics
+  - controlled rounding and caps.
+
+MERN Implementation Mapping (initial)
+-------------------------------------
+- Mongo collections:
+  contractors, budgets, workOrders, extraItems.
+- Backend services:
+  - deductionCalculator service (pure function)
+  - workOrder create/update service
+  - budget impact service (transaction-safe updates)
+- API endpoints:
+  - POST /work-orders/calculate
+  - POST /work-orders
+  - PUT /work-orders/:id
+  - GET /reports/audit-sheet/:id
+- Frontend:
+  - Work entry form with instant computed preview
+  - report preview with print-friendly mode
+  - budget utilization dashboard
+
+End of Spec

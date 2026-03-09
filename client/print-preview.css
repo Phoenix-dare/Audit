@@ -1,0 +1,281 @@
+@page { size: A4 portrait; margin: 0; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #111;
+  font-family: "Times New Roman", serif;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+main { padding: 8mm 0; }
+
+.controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 12px;
+}
+
+.print-btn {
+  background: #fff;
+  border: 1px solid #000;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 6px 12px;
+}
+
+/* ensure each page element is exactly A4 size (minus margins) to avoid browser auto-scaling */
+.page {
+  display: none;
+  width: 210mm;            /* full A4 width */
+  min-height: 297mm;       /* full A4 height */
+  margin: 0 auto 12px;
+  padding: 12mm;           /* give all‑around space now that @page has no margin */
+  box-sizing: border-box;
+  page-break-after: always;
+}
+
+
+.doc-title {
+  text-align: center;
+  font-size: 33px;
+  font-weight: 400;
+  text-decoration: underline;
+  margin: 0 0 10px;
+}
+
+.register-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 2px 2px;
+  font-size: 27px;
+}
+
+.register-head .left,
+.register-head .right {
+  display: flex;
+  gap: 8px;
+}
+
+.register-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.register-table td {
+  border: 1px solid #111;
+  font-size: 29px;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.register-table td:first-child { width: 46%; }
+.register-table td:last-child { width: 54%; }
+.register-table .tall td { padding-top: 16px; padding-bottom: 16px; }
+
+.register-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: 0 4px;
+  font-size: 27px;
+}
+
+.center-head {
+  text-align: center;
+  font-size: 33px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.center-sub {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 700;
+  margin: 2px 0;
+}
+
+.center-under {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 700;
+  text-decoration: underline;
+  margin: 0 0 8px;
+}
+
+.notes-body {
+  font-size: 28px;
+  margin-top: 4px;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: 43% 4% 53%;
+  row-gap: 2px;
+}
+
+.notes-remarks {
+  margin: 4px 0 8px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.notes-remark-muted { color: #e7e7e7; }
+
+.notes-deductions {
+  margin-left: 12%;
+}
+
+.notes-para {
+  margin-top: 8px;
+  text-align: justify;
+}
+
+.notes-sign {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.notes-sign .center { text-align: left; }
+.notes-sign .right { text-align: right; font-weight: 700; }
+
+.letter-header {
+  text-align: center;
+  font-size: 33px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.letter-meta {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 29px;
+  font-weight: 700;
+}
+
+.letter-body {
+  margin-top: 8px;
+  font-size: 29px;
+}
+
+.letter-row { margin-top: 8px; }
+.letter-indent { padding-left: 24px; }
+
+.letter-sub {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+}
+
+.letter-ref {
+  margin-top: 18px;
+  padding-left: 24px;
+}
+
+.letter-ref div { margin-top: 3px; }
+
+.letter-para {
+  margin-top: 12px;
+  text-align: justify;
+  text-indent: 58px;
+}
+
+.letter-closing {
+  margin-top: 22px;
+  text-align: right;
+  padding-right: 40px;
+}
+
+.letter-sign {
+  margin-top: 12px;
+  text-align: right;
+  padding-right: 40px;
+  font-weight: 700;
+}
+
+.letter-acc {
+  margin-top: 16px;
+  font-size: 29px;
+}
+
+.letter-acc .line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  max-width: 360px;
+  gap: 20px;
+}
+
+.schedule-block {
+  margin-top: 4px;
+  font-size: 27px;
+}
+
+.schedule-title { font-size: 29px; }
+
+.schedule-topline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.schedule-grid {
+  margin-top: 2px;
+  display: grid;
+  grid-template-columns: 30% 4% 66%;
+  row-gap: 1px;
+}
+
+.schedule-pay {
+  margin-top: 2px;
+  display: grid;
+  grid-template-columns: 30% 4% 44% 22%;
+}
+
+.schedule-sign {
+  text-align: right;
+  font-size: 30px;
+  margin-top: 2px;
+}
+
+.space-lg { margin-top: 12px; }
+
+@media print {
+  .controls { display: none; }
+  main { padding: 0; }
+  /* on paper the browser already enforces its own (printer/margin) limits, so sizing
+     the wrapper exactly 210mm can still cause an additional shrink-to-fit when the
+     dialog margins are non‑zero.  Use 100% width/height here to fill whatever printable
+     area remains, and rely on internal padding for whitespace. */
+  .page {
+    width: 100%;           /* fill printable region */
+    min-height: 100%;      /* likewise for height */
+    padding: 12mm;         /* preserve space inside the sheet */
+    margin: 0;
+    box-shadow: none;
+  }
+}
+
+@media screen {
+  body { background: #2a2a2a; }
+  main {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 8px;
+  }
+  .page {
+    background: #efefef;
+    box-shadow: none;
+    border: 1px solid #1f1f1f;
+    width: min(210mm, calc(100vw - 24px));
+    min-height: 297mm;
+    margin: 0 auto 12px;
+  }
+}
