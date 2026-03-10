@@ -10,6 +10,18 @@ body {
   color: #333;
 }
 
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  padding: 10px 14px;
+  background: #ffedb5;
+  color: #4b3a09;
+  border-bottom: 1px solid #e0c77a;
+  text-align: center;
+  font-weight: 600;
+}
+
 .app {
   min-height: 100vh;
   padding: 20px;

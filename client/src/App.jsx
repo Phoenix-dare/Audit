@@ -7,6 +7,7 @@ import {
   createWorkOrder, previewCalculation, getContractors, getBudgets, getWorkOrders, updateBudget,
   updateWorkOrder, getWorkOrder, createContractor, createBudget
 } from "./api";
+import OfflineBanner from "./OfflineBanner";
 import "./styles.css";
 
 export default function App() {
@@ -433,6 +434,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <OfflineBanner />
       <div className="view-tabs">
         <button 
           className={view === "form" ? "tab-btn active" : "tab-btn"}
