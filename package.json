@@ -1,0 +1,9 @@
+{
+  "name": "audit-monorepo",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix client install && npm --prefix server install",
+    "build:client": "npm --prefix client run build",
+    "vercel-build": "npm --prefix client run build"
+  }
+}
