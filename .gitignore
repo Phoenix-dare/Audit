@@ -5,6 +5,7 @@ server/node_modules/
 client/dist/
 *.log
 .env
+client/.env.local
 server/.env
 *.accdb
 access-report-dumps/
