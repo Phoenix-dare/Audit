@@ -7,6 +7,14 @@
   <link rel="stylesheet" href="print-preview.css">
   <script>
     function doPrint() { window.print(); }
+
+    window.addEventListener("keydown", (event) => {
+      const isPrintShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p";
+      if (!isPrintShortcut) return;
+
+      event.preventDefault();
+      doPrint();
+    }, true);
   </script>
 </head>
 <body>

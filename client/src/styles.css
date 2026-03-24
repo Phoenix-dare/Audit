@@ -616,6 +616,60 @@ body {
   height: calc(100% - 50px);
 }
 
+@media print {
+  body.preview-print-active {
+    background: white !important;
+  }
+
+  body.preview-print-active .offline-banner,
+  body.preview-print-active .view-tabs,
+  body.preview-print-active .form-header,
+  body.preview-print-active .form-section,
+  body.preview-print-active .form-actions,
+  body.preview-print-active .calculation-result,
+  body.preview-print-active .bills-list {
+    display: none !important;
+  }
+
+  body.preview-print-active .app,
+  body.preview-print-active .bill-form {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  body.preview-print-active .preview-modal {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    background: white !important;
+    backdrop-filter: none !important;
+  }
+
+  body.preview-print-active .preview-dialog {
+    width: auto !important;
+    height: auto !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: white !important;
+  }
+
+  body.preview-print-active .preview-header {
+    display: none !important;
+  }
+
+  body.preview-print-active .preview-dialog iframe {
+    display: block !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    margin: 0 auto !important;
+  }
+}
+
 @media (max-width: 768px) {
   .preview-dialog {
     width: 98vw;

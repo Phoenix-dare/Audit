@@ -126,6 +126,11 @@ export default function App() {
     return () => window.removeEventListener("keydown", handlePrintShortcut);
   }, [previewOpen]);
 
+  useEffect(() => {
+    document.body.classList.toggle("preview-print-active", previewOpen);
+    return () => document.body.classList.remove("preview-print-active");
+  }, [previewOpen]);
+
   const loadMasterData = async () => {
     try {
       const [c, b] = await Promise.all([
