@@ -72,6 +72,15 @@ export default function App() {
   // id of bill currently being edited (if any)
   const [editingId, setEditingId] = useState(null);
 
+  const getPreviewWindow = () => document.getElementById("preview-iframe")?.contentWindow || null;
+
+  const printPreview = () => {
+    const previewWindow = getPreviewWindow();
+    if (!previewWindow) return;
+    previewWindow.focus();
+    previewWindow.print();
+  };
+
   useEffect(() => {
     loadMasterData();
   }, []);
@@ -86,11 +95,11 @@ export default function App() {
   useEffect(() => {
     if (!previewOpen || !previewPayload) return;
     const tryPost = () => {
-      const iframe = document.getElementById('preview-iframe');
-      if (iframe && iframe.contentWindow) {
+      const previewWindow = getPreviewWindow();
+      if (previewWindow) {
         try {
           console.log('posting to iframe', previewPayload);
-          iframe.contentWindow.postMessage(previewPayload, '*');
+          previewWindow.postMessage(previewPayload, '*');
         } catch (err) {
           console.error('iframe post error', err);
         }
@@ -101,6 +110,21 @@ export default function App() {
     };
     tryPost();
   }, [previewOpen, previewPayload]);
+
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+
+    const handlePrintShortcut = (event) => {
+      const isPrintShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p";
+      if (!isPrintShortcut) return;
+
+      event.preventDefault();
+      printPreview();
+    };
+
+    window.addEventListener("keydown", handlePrintShortcut);
+    return () => window.removeEventListener("keydown", handlePrintShortcut);
+  }, [previewOpen]);
 
   const loadMasterData = async () => {
     try {
@@ -722,7 +746,7 @@ export default function App() {
                 <iframe id="preview-iframe" title="preview" src="/print-preview.html" onLoad={() => {
               if (previewPayload) {
                 console.log('iframe loaded, posting payload onLoad', previewPayload);
-                const w = document.getElementById('preview-iframe')?.contentWindow;
+                const w = getPreviewWindow();
                 if (w) w.postMessage(previewPayload, '*');
               }
             }} />
