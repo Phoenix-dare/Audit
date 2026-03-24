@@ -329,13 +329,27 @@
           return words.trim();
         };
 
+        const amountFields = new Set([
+          "baseValue", "billAmount", "it", "wwc", "gst", "retention", "electricityCharges",
+          "fineExecution", "fineCompletion", "fineOthers", "chequeAmount", "allocation",
+          "expenditure", "balance", "paymentBaseValue", "paymentBillAmount", "paymentIt",
+          "paymentWwc", "paymentGst", "paymentRetention", "paymentECharge", "paymentFineExec",
+          "paymentFineComp", "paymentFineOthers", "paymentChequeAmount", "paymentAllocation",
+          "paymentExpenditure", "paymentBalance", "scheduleGrossAmount", "scheduleGstAmount",
+          "scheduleGrossAmount2", "scheduleItAmount", "scheduleGrossAmount3", "scheduleWwcAmount",
+          "notesEstimateAmount", "notesPac", "notesUptoDateBill", "notesGst", "notesIt",
+          "notesWwc", "notesRetention", "notesFine", "notesCheque", "notesSinceLastBill",
+          "notesExpenditure"
+        ]);
+
         const set = (field, value) => {
           const el = document.querySelector(`[data-field="${field}"]`);
           if (el) {
             const text = value == null ? "" : value;
             el.textContent = text;
-            // if value is numeric, append words in parentheses
-            const n = Number(text.toString().replace(/[^0-9.-]/g, ''));
+            if (!amountFields.has(field)) return;
+
+            const n = Number(text.toString().replace(/[^0-9.-]/g, ""));
             if (!Number.isNaN(n) && text !== "" && text !== "0") {
               const w = numberToWords(n);
               if (w) el.textContent += ` (${w})`;

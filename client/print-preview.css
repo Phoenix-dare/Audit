@@ -6,11 +6,11 @@ html, body {
   background: #fff;
   color: #111;
   font-family: "Times New Roman", serif;
-  font-size: 13px;
-  line-height: 1.1;
+  font-size: 12px;
+  line-height: 1.15;
 }
 
-main { padding: 8mm 0; }
+main { padding: 6mm 0; }
 
 .controls {
   display: flex;
@@ -32,26 +32,28 @@ main { padding: 8mm 0; }
   display: none;
   width: 210mm;            /* full A4 width */
   min-height: 297mm;       /* full A4 height */
-  margin: 0 auto 12px;
-  padding: 12mm;           /* give all-around space now that @page has no margin */
+  margin: 0 auto 10px;
+  padding: 8mm;            /* preserve A4 proportions while keeping enough usable space */
   box-sizing: border-box;
   page-break-after: always;
+  background: white;
 }
 
 
 .doc-title {
   text-align: center;
-  font-size: 33px;
-  font-weight: 400;
+  font-size: 22px;
+  font-weight: 600;
   text-decoration: underline;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
 }
 
 .register-head {
   display: flex;
   justify-content: space-between;
-  margin: 0 2px 2px;
-  font-size: 27px;
+  margin: 0 2px 4px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .register-head .left,
@@ -68,26 +70,26 @@ main { padding: 8mm 0; }
 
 .register-table td {
   border: 1px solid #111;
-  font-size: 29px;
-  padding: 4px 6px;
+  font-size: 12px;
+  padding: 4px 5px;
   vertical-align: top;
 }
 
-.register-table td:first-child { width: 46%; }
-.register-table td:last-child { width: 54%; }
-.register-table .tall td { padding-top: 16px; padding-bottom: 16px; }
+.register-table td:first-child { width: 45%; }
+.register-table td:last-child { width: 55%; }
+.register-table .tall td { padding-top: 10px; padding-bottom: 10px; }
 
 .register-foot {
   display: flex;
   justify-content: space-between;
-  margin-top: 24px;
+  margin-top: 16px;
   padding: 0 4px;
-  font-size: 27px;
+  font-size: 12px;
 }
 
 .center-head {
   text-align: center;
-  font-size: 33px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.15;
   margin: 0;
@@ -95,27 +97,27 @@ main { padding: 8mm 0; }
 
 .center-sub {
   text-align: center;
-  font-size: 30px;
+  font-size: 17px;
   font-weight: 700;
   margin: 2px 0;
 }
 
 .center-under {
   text-align: center;
-  font-size: 30px;
+  font-size: 17px;
   font-weight: 700;
   text-decoration: underline;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
 }
 
 .notes-body {
-  font-size: 28px;
+  font-size: 12px;
   margin-top: 4px;
 }
 
 .notes-grid {
   display: grid;
-  grid-template-columns: 43% 4% 53%;
+  grid-template-columns: 40% 4% 56%;
   row-gap: 2px;
 }
 
@@ -123,23 +125,26 @@ main { padding: 8mm 0; }
   margin: 4px 0 8px;
   display: flex;
   justify-content: space-between;
+  font-size: 12px;
 }
 
 .notes-remark-muted { color: #e7e7e7; }
 
 .notes-deductions {
-  margin-left: 12%;
+  margin-left: 10%;
 }
 
 .notes-para {
-  margin-top: 8px;
+  margin-top: 6px;
   text-align: justify;
+  font-size: 12px;
 }
 
 .notes-sign {
-  margin-top: 14px;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
+  font-size: 12px;
 }
 
 .notes-sign .center { text-align: left; }
@@ -147,82 +152,84 @@ main { padding: 8mm 0; }
 
 .letter-header {
   text-align: center;
-  font-size: 33px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.15;
   margin-top: 2px;
 }
 
 .letter-meta {
-  margin-top: 6px;
+  margin-top: 4px;
   display: flex;
   justify-content: space-between;
-  font-size: 29px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .letter-body {
-  margin-top: 8px;
-  font-size: 29px;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
-.letter-row { margin-top: 8px; }
-.letter-indent { padding-left: 24px; }
+.letter-row { margin-top: 5px; }
+.letter-indent { padding-left: 18px; }
 
 .letter-sub {
-  margin-top: 18px;
+  margin-top: 10px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .letter-ref {
-  margin-top: 18px;
-  padding-left: 24px;
+  margin-top: 10px;
+  padding-left: 18px;
 }
 
-.letter-ref div { margin-top: 3px; }
+.letter-ref div { margin-top: 2px; }
 
 .letter-para {
-  margin-top: 12px;
+  margin-top: 8px;
   text-align: justify;
-  text-indent: 58px;
+  text-indent: 32px;
 }
 
 .letter-closing {
-  margin-top: 22px;
+  margin-top: 16px;
   text-align: right;
-  padding-right: 40px;
+  padding-right: 24px;
 }
 
 .letter-sign {
-  margin-top: 12px;
+  margin-top: 8px;
   text-align: right;
-  padding-right: 40px;
+  padding-right: 24px;
   font-weight: 700;
 }
 
 .letter-acc {
-  margin-top: 16px;
-  font-size: 29px;
+  margin-top: 10px;
+  font-size: 11px;
 }
 
 .letter-acc .line {
   display: grid;
   grid-template-columns: 1fr auto;
-  max-width: 360px;
-  gap: 20px;
+  max-width: 320px;
+  gap: 14px;
 }
 
 .schedule-block {
-  margin-top: 4px;
-  font-size: 27px;
+  margin-top: 3px;
+  font-size: 12px;
 }
 
-.schedule-title { font-size: 29px; }
+.schedule-title { font-size: 13px; font-weight: 600; }
 
 .schedule-topline {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .schedule-grid {
@@ -230,48 +237,52 @@ main { padding: 8mm 0; }
   display: grid;
   grid-template-columns: 30% 4% 66%;
   row-gap: 1px;
+  font-size: 11px;
 }
 
 .schedule-pay {
   margin-top: 2px;
   display: grid;
   grid-template-columns: 30% 4% 44% 22%;
+  font-size: 11px;
 }
 
 .schedule-sign {
   text-align: right;
-  font-size: 30px;
+  font-size: 13px;
   margin-top: 2px;
 }
 
-.space-lg { margin-top: 12px; }
+.space-lg { margin-top: 8px; }
 
 @media print {
   .controls { display: none !important; }
   main { padding: 0; }
   .page {
     width: 100%;           /* fill printable region */
-    min-height: 100%;
-    padding: 12mm;         /* preserve space inside the sheet */
+    min-height: auto;
+    padding: 8mm;
     margin: 0;
     box-shadow: none;
+    background: white;
   }
 }
 
 @media screen {
-  body { background: #2a2a2a; }
+  body { background: #e0e0e0; }
   main {
     display: flex;
     justify-content: center;
     align-items: flex-start;
     padding: 8px;
+    flex-wrap: wrap;
   }
   .page {
-    background: #efefef;
-    box-shadow: none;
-    border: 1px solid #1f1f1f;
-    width: min(210mm, calc(100vw - 24px));
-    min-height: 297mm;
-    margin: 0 auto 12px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border: 1px solid #ccc;
+    width: min(210mm, calc(100vw - 16px));
+    min-height: auto;
+    margin: 8px auto;
   }
 }
