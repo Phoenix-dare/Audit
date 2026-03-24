@@ -32,10 +32,8 @@ export function calculateAudit(input) {
   const nlc = ccpf === "Final" ? "Yes" : "Part Bill";
 
   let gst = 0;
-  if (ccpf === "Final" && ba > 250000) {
-    gst = baseAmount * 0.02;
-  }
-  if ((ccpf === "Part" || ccn !== "I") && pac > 250000) {
+  // GST 2% deduction if base value exceeds 3.5 lakh OR contractor is a company
+  if (baseAmount > 350000 || coy === "Company") {
     gst = baseAmount * 0.02;
   }
   gst = roundNearest(gst);
