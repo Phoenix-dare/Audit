@@ -610,6 +610,12 @@ body {
   color: #333;
 }
 
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .preview-dialog iframe {
   border: none;
   width: 100%;

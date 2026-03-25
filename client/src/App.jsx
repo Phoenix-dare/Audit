@@ -8,6 +8,7 @@ import {
   updateWorkOrder, getWorkOrder, createContractor, createBudget
 } from "./api";
 import OfflineBanner from "./OfflineBanner";
+import { PRINT_PREVIEW_DOCUMENT } from "./printPreviewDocument";
 import "./styles.css";
 
 export default function App() {
@@ -746,9 +747,12 @@ export default function App() {
               <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="preview-header">
                   <div>Print Preview</div>
-                  <button className="btn" onClick={() => setPreviewOpen(false)}>Close</button>
+                  <div className="preview-actions">
+                    <button className="btn" onClick={printPreview}>Print</button>
+                    <button className="btn" onClick={() => setPreviewOpen(false)}>Close</button>
+                  </div>
                 </div>
-                <iframe id="preview-iframe" title="preview" src="/print-preview.html" onLoad={() => {
+                <iframe id="preview-iframe" title="preview" srcDoc={PRINT_PREVIEW_DOCUMENT} onLoad={() => {
               if (previewPayload) {
                 console.log('iframe loaded, posting payload onLoad', previewPayload);
                 const w = getPreviewWindow();
