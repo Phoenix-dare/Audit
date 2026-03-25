@@ -75,11 +75,43 @@ export default function App() {
 
   const getPreviewWindow = () => document.getElementById("preview-iframe")?.contentWindow || null;
 
+  const postPreviewPayload = (targetWindow, data) => {
+    if (!targetWindow || !data) return;
+    targetWindow.postMessage(data, "*");
+  };
+
   const printPreview = () => {
-    const previewWindow = getPreviewWindow();
-    if (!previewWindow) return;
-    previewWindow.focus();
-    previewWindow.print();
+    if (!previewPayload) return;
+
+    const printWindow = window.open("", "_blank", "width=1024,height=768");
+    if (!printWindow) {
+      alert("Please allow pop-ups to print this preview.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(PRINT_PREVIEW_DOCUMENT);
+    printWindow.document.close();
+
+    const startPrint = () => {
+      try {
+        postPreviewPayload(printWindow, previewPayload);
+        printWindow.onafterprint = () => printWindow.close();
+        printWindow.setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 250);
+      } catch (error) {
+        console.error("print window error", error);
+      }
+    };
+
+    if (printWindow.document.readyState === "complete") {
+      startPrint();
+      return;
+    }
+
+    printWindow.addEventListener("load", startPrint, { once: true });
   };
 
   useEffect(() => {
@@ -100,7 +132,7 @@ export default function App() {
       if (previewWindow) {
         try {
           console.log('posting to iframe', previewPayload);
-          previewWindow.postMessage(previewPayload, '*');
+          postPreviewPayload(previewWindow, previewPayload);
         } catch (err) {
           console.error('iframe post error', err);
         }
@@ -125,7 +157,7 @@ export default function App() {
 
     window.addEventListener("keydown", handlePrintShortcut);
     return () => window.removeEventListener("keydown", handlePrintShortcut);
-  }, [previewOpen]);
+  }, [previewOpen, previewPayload]);
 
   useEffect(() => {
     document.body.classList.toggle("preview-print-active", previewOpen);
@@ -756,7 +788,7 @@ export default function App() {
               if (previewPayload) {
                 console.log('iframe loaded, posting payload onLoad', previewPayload);
                 const w = getPreviewWindow();
-                if (w) w.postMessage(previewPayload, '*');
+                if (w) postPreviewPayload(w, previewPayload);
               }
             }} />
               </div>

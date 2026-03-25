@@ -1,4 +1,9 @@
-@page { size: A4 portrait; margin: 8mm; }
+@page { size: A4 portrait; margin: 10mm; }
+
+:root {
+  --print-page-width: 190mm;
+  --print-page-height: 277mm;
+}
 
 html, body {
   margin: 0;
@@ -270,16 +275,19 @@ main { padding: 6mm 0; }
 
 @media print {
   html, body {
+    width: var(--print-page-width);
+    min-height: var(--print-page-height);
+    margin: 0 auto;
     background: #fff;
   }
 
   .controls { display: none !important; }
   main { padding: 0; }
   .page {
-    width: auto;
-    min-height: calc(297mm - 16mm);
+    width: var(--print-page-width);
+    min-height: var(--print-page-height);
     padding: 0;
-    margin: 0;
+    margin: 0 auto;
     box-shadow: none;
     border: none;
     background: white;
