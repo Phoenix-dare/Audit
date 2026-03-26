@@ -76,10 +76,61 @@ export default function App() {
   const getPreviewWindow = () => document.getElementById("preview-iframe")?.contentWindow || null;
 
   const printPreview = () => {
-    const previewWindow = getPreviewWindow();
-    if (!previewWindow) return;
-    previewWindow.focus();
-    previewWindow.print();
+    if (!previewPayload) return;
+
+    const printFrame = document.createElement("iframe");
+    printFrame.setAttribute("aria-hidden", "true");
+    printFrame.setAttribute("title", "detached-print-frame");
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "0";
+    printFrame.style.height = "0";
+    printFrame.style.border = "0";
+    printFrame.style.opacity = "0";
+    printFrame.style.pointerEvents = "none";
+    printFrame.srcdoc = PRINT_PREVIEW_DOCUMENT;
+
+    const cleanup = () => {
+      if (printFrame.parentNode) {
+        printFrame.parentNode.removeChild(printFrame);
+      }
+    };
+
+    const triggerDetachedPrint = () => {
+      const frameWindow = printFrame.contentWindow;
+      if (!frameWindow) {
+        cleanup();
+        return;
+      }
+
+      try {
+        frameWindow.postMessage(previewPayload, "*");
+      } catch (error) {
+        console.error("detached print postMessage error", error);
+      }
+
+      setTimeout(() => {
+        try {
+          const handleAfterPrint = () => {
+            frameWindow.removeEventListener("afterprint", handleAfterPrint);
+            cleanup();
+          };
+
+          frameWindow.addEventListener("afterprint", handleAfterPrint);
+          frameWindow.focus();
+          frameWindow.print();
+          // Fallback cleanup if afterprint does not fire.
+          setTimeout(cleanup, 5000);
+        } catch (error) {
+          console.error("detached print error", error);
+          cleanup();
+        }
+      }, 250);
+    };
+
+    printFrame.addEventListener("load", triggerDetachedPrint, { once: true });
+    document.body.appendChild(printFrame);
   };
 
   useEffect(() => {
@@ -125,7 +176,7 @@ export default function App() {
 
     window.addEventListener("keydown", handlePrintShortcut);
     return () => window.removeEventListener("keydown", handlePrintShortcut);
-  }, [previewOpen]);
+  }, [previewOpen, previewPayload]);
 
   useEffect(() => {
     document.body.classList.toggle("preview-print-active", previewOpen);
