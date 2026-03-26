@@ -78,59 +78,80 @@ export default function App() {
   const printPreview = () => {
     if (!previewPayload) return;
 
-    const printFrame = document.createElement("iframe");
-    printFrame.setAttribute("aria-hidden", "true");
-    printFrame.setAttribute("title", "detached-print-frame");
-    printFrame.style.position = "fixed";
-    printFrame.style.right = "0";
-    printFrame.style.bottom = "0";
-    printFrame.style.width = "0";
-    printFrame.style.height = "0";
-    printFrame.style.border = "0";
-    printFrame.style.opacity = "0";
-    printFrame.style.pointerEvents = "none";
-    printFrame.srcdoc = PRINT_PREVIEW_DOCUMENT;
-
-    const cleanup = () => {
-      if (printFrame.parentNode) {
-        printFrame.parentNode.removeChild(printFrame);
-      }
+    const fallbackPrintInPreviewFrame = () => {
+      const previewWindow = getPreviewWindow();
+      if (!previewWindow) return;
+      previewWindow.focus();
+      previewWindow.print();
     };
 
-    const triggerDetachedPrint = () => {
-      const frameWindow = printFrame.contentWindow;
-      if (!frameWindow) {
-        cleanup();
-        return;
-      }
+    const printWindow = window.open("", "audit_print_preview");
+    if (!printWindow) {
+      fallbackPrintInPreviewFrame();
+      return;
+    }
 
-      try {
-        frameWindow.postMessage(previewPayload, "*");
-      } catch (error) {
-        console.error("detached print postMessage error", error);
-      }
+    let started = false;
+    const startPrint = () => {
+      if (started) return;
+      started = true;
 
+      const pushPayload = () => {
+        // Post payload a few times so the preview listener receives it
+        // reliably after document load.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          setTimeout(() => {
+            try {
+              printWindow.postMessage(previewPayload, "*");
+            } catch (error) {
+              console.error("popup print postMessage error", error);
+            }
+          }, attempt * 120);
+        }
+      };
+
+      const cleanup = () => {
+        setTimeout(() => {
+          try {
+            if (!printWindow.closed) {
+              printWindow.close();
+            }
+          } catch (error) {
+            console.error("popup print cleanup error", error);
+          }
+        }, 250);
+      };
+
+      pushPayload();
       setTimeout(() => {
         try {
-          const handleAfterPrint = () => {
-            frameWindow.removeEventListener("afterprint", handleAfterPrint);
-            cleanup();
-          };
-
-          frameWindow.addEventListener("afterprint", handleAfterPrint);
-          frameWindow.focus();
-          frameWindow.print();
-          // Fallback cleanup if afterprint does not fire.
-          setTimeout(cleanup, 5000);
+          printWindow.focus();
+          printWindow.print();
         } catch (error) {
-          console.error("detached print error", error);
-          cleanup();
+          console.error("popup print error", error);
         }
-      }, 250);
+      }, 900);
+
+      try {
+        printWindow.addEventListener("afterprint", cleanup, { once: true });
+      } catch (error) {
+        console.error("popup afterprint attach error", error);
+      }
+      setTimeout(cleanup, 15000);
     };
 
-    printFrame.addEventListener("load", triggerDetachedPrint, { once: true });
-    document.body.appendChild(printFrame);
+    try {
+      printWindow.addEventListener("load", startPrint, { once: true });
+      printWindow.document.open();
+      printWindow.document.write(PRINT_PREVIEW_DOCUMENT);
+      printWindow.document.close();
+      if (printWindow.document.readyState === "complete") {
+        startPrint();
+      }
+    } catch (error) {
+      console.error("popup print setup error", error);
+      fallbackPrintInPreviewFrame();
+    }
   };
 
   useEffect(() => {
