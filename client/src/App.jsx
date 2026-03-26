@@ -78,16 +78,13 @@ export default function App() {
   const printPreview = () => {
     if (!previewPayload) return;
 
-    const fallbackPrintInPreviewFrame = () => {
-      const previewWindow = getPreviewWindow();
-      if (!previewWindow) return;
-      previewWindow.focus();
-      previewWindow.print();
+    const notifyPopupBlocked = () => {
+      alert("Please allow pop-ups for this site to print the full-page preview.");
     };
 
     const printWindow = window.open("", "audit_print_preview");
     if (!printWindow) {
-      fallbackPrintInPreviewFrame();
+      notifyPopupBlocked();
       return;
     }
 
@@ -150,7 +147,7 @@ export default function App() {
       }
     } catch (error) {
       console.error("popup print setup error", error);
-      fallbackPrintInPreviewFrame();
+      notifyPopupBlocked();
     }
   };
 
