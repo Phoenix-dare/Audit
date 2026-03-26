@@ -1,4 +1,4 @@
-@page { size: A4 portrait; margin: 0; }
+@page { size: A4; margin: 15mm; }
 
 html, body {
   margin: 0;
@@ -269,40 +269,96 @@ main { padding: 6mm 0; }
 .space-lg { margin-top: 8px; }
 
 @media print {
-  html, body {
-    width: 210mm;
-    height: 297mm;
-    margin: 0;
-    padding: 0;
-    background: #fff;
-    overflow: hidden;
+  @page {
+    size: A4;
+    margin: 15mm;
   }
 
-  .controls { display: none !important; }
-  main {
-    width: 210mm;
-    margin: 0;
-    padding: 0;
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    background: #fff !important;
+    overflow: visible !important;
+    font-size: 12pt !important;
   }
-  .page {
-    width: 210mm;
-    min-height: 297mm;
-    height: 297mm;
-    padding: 8mm;
-    margin: 0;
-    box-shadow: none;
-    border: none;
-    background: white;
-    overflow: hidden;
+
+  body {
+    visibility: hidden !important;
+  }
+
+  #print-preview-container,
+  #print-preview-container * {
+    visibility: visible !important;
+  }
+
+  #print-preview-container {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+  }
+
+  .controls {
+    display: none !important;
+  }
+
+  #print-preview-container .page {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 0 8mm !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
     transform: none !important;
     zoom: 1 !important;
+    font-size: 12pt !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
     break-after: page;
     page-break-after: always;
   }
 
-  .page:last-child {
+  #print-preview-container .page:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+
+  #audit-notes-container,
+  #audit-notes-container > *,
+  #print-preview-container .page > *,
+  #print-preview-container table,
+  #print-preview-container img,
+  #print-preview-container svg,
+  #print-preview-container canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #print-preview-container .notes-grid,
+  #print-preview-container .notes-deductions,
+  #print-preview-container .notes-remarks,
+  #print-preview-container .notes-para,
+  #print-preview-container .notes-sign,
+  #print-preview-container .schedule-block,
+  #print-preview-container .register-table tr,
+  #print-preview-container .letter-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

@@ -743,7 +743,7 @@ export default function App() {
 
           {/* Preview modal with iframe */}
           {previewOpen && (
-            <div className="preview-modal" onClick={() => setPreviewOpen(false)}>
+            <div id="preview-print-container" className="preview-modal" onClick={() => setPreviewOpen(false)}>
               <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="preview-header">
                   <div>Print Preview</div>

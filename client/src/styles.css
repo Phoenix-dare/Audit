@@ -623,56 +623,78 @@ body {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
   body.preview-print-active {
-    background: white !important;
-  }
-
-  body.preview-print-active .offline-banner,
-  body.preview-print-active .view-tabs,
-  body.preview-print-active .form-header,
-  body.preview-print-active .form-section,
-  body.preview-print-active .form-actions,
-  body.preview-print-active .calculation-result,
-  body.preview-print-active .bills-list {
-    display: none !important;
-  }
-
-  body.preview-print-active .app,
-  body.preview-print-active .bill-form {
-    max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    background: white !important;
-    box-shadow: none !important;
-    border: none !important;
+    background: #fff !important;
+    visibility: hidden !important;
   }
 
-  body.preview-print-active .preview-modal {
+  body.preview-print-active #preview-print-container,
+  body.preview-print-active #preview-print-container * {
+    visibility: visible !important;
+  }
+
+  body.preview-print-active #preview-print-container,
+  body.preview-print-active #preview-print-container .preview-dialog {
     position: static !important;
     inset: auto !important;
     display: block !important;
-    background: white !important;
-    backdrop-filter: none !important;
-  }
-
-  body.preview-print-active .preview-dialog {
-    width: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
     height: auto !important;
-    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
+    transform: none !important;
+    background: #fff !important;
+    backdrop-filter: none !important;
     box-shadow: none !important;
-    background: white !important;
+    border-radius: 0 !important;
   }
 
-  body.preview-print-active .preview-header {
+  body.preview-print-active #preview-print-container .preview-header {
     display: none !important;
   }
 
-  body.preview-print-active .preview-dialog iframe {
+  body.preview-print-active #preview-print-container .preview-dialog iframe {
+    position: static !important;
     display: block !important;
-    width: 210mm !important;
-    height: 297mm !important;
-    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    border: none !important;
+    transform: none !important;
+  }
+
+  body.preview-print-active #preview-print-container .preview-dialog,
+  body.preview-print-active #preview-print-container .preview-dialog * {
+    font-size: 12pt !important;
+  }
+
+  body.preview-print-active #preview-print-container .preview-dialog > *,
+  body.preview-print-active #preview-print-container .preview-dialog iframe {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.preview-print-active #preview-print-container section,
+  body.preview-print-active #preview-print-container tr,
+  body.preview-print-active #preview-print-container .notes-grid,
+  body.preview-print-active #preview-print-container .notes-deductions,
+  body.preview-print-active #preview-print-container .notes-sign {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 
