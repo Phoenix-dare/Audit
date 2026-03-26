@@ -276,35 +276,45 @@ main { padding: 6mm 0; }
 
   html,
   body {
+    width: 100% !important;
+    height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: auto !important;
-    height: auto !important;
-    background: #fff !important;
     overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
     font-size: 12pt !important;
+    transform: none !important;
   }
 
-  body {
-    visibility: hidden !important;
-  }
-
-  #print-preview-container,
-  #print-preview-container * {
-    visibility: visible !important;
+  body > * {
+    display: none !important;
   }
 
   #print-preview-container {
-    position: static !important;
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
     max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
-    height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
     transform: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  #print-preview-container,
+  #print-preview-container * {
+    transform: none !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   .controls {
@@ -323,8 +333,6 @@ main { padding: 6mm 0; }
     background: #fff !important;
     box-shadow: none !important;
     border: none !important;
-    overflow: visible !important;
-    transform: none !important;
     zoom: 1 !important;
     font-size: 12pt !important;
     break-inside: avoid;
@@ -338,15 +346,34 @@ main { padding: 6mm 0; }
     page-break-after: auto;
   }
 
-  #audit-notes-container,
-  #audit-notes-container > *,
-  #print-preview-container .page > *,
-  #print-preview-container table,
-  #print-preview-container img,
-  #print-preview-container svg,
-  #print-preview-container canvas {
+  #audit-notes-container {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    background: #fff !important;
+  }
+
+  #audit-notes-container div,
+  #audit-notes-container table,
+  #audit-notes-container img,
+  #audit-notes-container svg,
+  #audit-notes-container canvas {
     width: 100% !important;
     max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  #audit-notes-container .notes-grid > div {
+    width: auto !important;
+    max-width: none !important;
   }
 
   #print-preview-container .notes-grid,
