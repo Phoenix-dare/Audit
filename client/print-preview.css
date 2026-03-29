@@ -1,4 +1,4 @@
-@page { size: A4; margin: 15mm; }
+@page { size: A4; margin: 8mm; }
 
 html, body {
   margin: 0;
@@ -6,36 +6,20 @@ html, body {
   background: #fff;
   color: #111;
   font-family: "Times New Roman", serif;
-  font-size: 12px;
-  line-height: 1.15;
+  font-size: 13px;
+  line-height: 1.24;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
 main { padding: 6mm 0; }
 
-.controls {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: 12px;
-}
-
-.print-btn {
-  background: #fff;
-  border: 1px solid #000;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 6px 12px;
-}
-
-/* ensure each page element is exactly A4 size (minus margins) to avoid browser auto-scaling */
 .page {
   display: none;
-  width: 210mm;            /* full A4 width */
-  min-height: 297mm;       /* full A4 height */
+  width: 210mm;
+  min-height: 297mm;
   margin: 0 auto 10px;
-  padding: 8mm;            /* preserve A4 proportions while keeping enough usable space */
+  padding: 11mm 10mm;
   box-sizing: border-box;
   break-after: page;
   page-break-after: always;
@@ -52,20 +36,25 @@ main { padding: 6mm 0; }
   word-break: break-word;
 }
 
+.deduction-value {
+  color: #b00020;
+  font-weight: 700;
+}
+
 
 .doc-title {
   text-align: center;
-  font-size: 22px;
+  font-size: 27px;
   font-weight: 600;
   text-decoration: underline;
-  margin: 0 0 8px;
+  margin: 0 0 12px;
 }
 
 .register-head {
   display: flex;
   justify-content: space-between;
-  margin: 0 2px 4px;
-  font-size: 13px;
+  margin: 0 2px 8px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -83,26 +72,26 @@ main { padding: 6mm 0; }
 
 .register-table td {
   border: 1px solid #111;
-  font-size: 12px;
-  padding: 4px 5px;
+  font-size: 13px;
+  padding: 8px 7px;
   vertical-align: top;
 }
 
 .register-table td:first-child { width: 45%; }
 .register-table td:last-child { width: 55%; }
-.register-table .tall td { padding-top: 10px; padding-bottom: 10px; }
+.register-table .tall td { padding-top: 18px; padding-bottom: 18px; }
 
 .register-foot {
   display: flex;
   justify-content: space-between;
-  margin-top: 16px;
+  margin-top: 24px;
   padding: 0 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .center-head {
   text-align: center;
-  font-size: 20px;
+  font-size: 23px;
   font-weight: 700;
   line-height: 1.15;
   margin: 0;
@@ -110,35 +99,35 @@ main { padding: 6mm 0; }
 
 .center-sub {
   text-align: center;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 700;
-  margin: 2px 0;
+  margin: 4px 0;
 }
 
 .center-under {
   text-align: center;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 700;
   text-decoration: underline;
-  margin: 0 0 6px;
+  margin: 0 0 10px;
 }
 
 .notes-body {
-  font-size: 12px;
-  margin-top: 4px;
+  font-size: 13px;
+  margin-top: 8px;
 }
 
 .notes-grid {
   display: grid;
   grid-template-columns: 40% 4% 56%;
-  row-gap: 2px;
+  row-gap: 5px;
 }
 
 .notes-remarks {
-  margin: 4px 0 8px;
+  margin: 10px 0 14px;
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .notes-remark-muted { color: #e7e7e7; }
@@ -148,16 +137,16 @@ main { padding: 6mm 0; }
 }
 
 .notes-para {
-  margin-top: 6px;
+  margin-top: 12px;
   text-align: justify;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .notes-sign {
-  margin-top: 12px;
+  margin-top: 20px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .notes-sign .center { text-align: left; }
@@ -165,63 +154,63 @@ main { padding: 6mm 0; }
 
 .letter-header {
   text-align: center;
-  font-size: 20px;
+  font-size: 23px;
   font-weight: 700;
   line-height: 1.15;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .letter-meta {
-  margin-top: 4px;
+  margin-top: 8px;
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .letter-body {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: 10px;
+  font-size: 13px;
 }
 
-.letter-row { margin-top: 5px; }
+.letter-row { margin-top: 8px; }
 .letter-indent { padding-left: 18px; }
 
 .letter-sub {
-  margin-top: 10px;
+  margin-top: 14px;
   display: flex;
   gap: 8px;
 }
 
 .letter-ref {
-  margin-top: 10px;
+  margin-top: 14px;
   padding-left: 18px;
 }
 
 .letter-ref div { margin-top: 2px; }
 
 .letter-para {
-  margin-top: 8px;
+  margin-top: 14px;
   text-align: justify;
   text-indent: 32px;
 }
 
 .letter-closing {
-  margin-top: 16px;
+  margin-top: 22px;
   text-align: right;
   padding-right: 24px;
 }
 
 .letter-sign {
-  margin-top: 8px;
+  margin-top: 12px;
   text-align: right;
   padding-right: 24px;
   font-weight: 700;
 }
 
 .letter-acc {
-  margin-top: 10px;
-  font-size: 11px;
+  margin-top: 16px;
+  font-size: 12px;
 }
 
 .letter-acc .line {
@@ -232,46 +221,46 @@ main { padding: 6mm 0; }
 }
 
 .schedule-block {
-  margin-top: 3px;
-  font-size: 12px;
+  margin-top: 8px;
+  font-size: 13px;
 }
 
-.schedule-title { font-size: 13px; font-weight: 600; }
+.schedule-title { font-size: 15px; font-weight: 600; }
 
 .schedule-topline {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  font-size: 11px;
-  margin-top: 2px;
+  font-size: 12px;
+  margin-top: 6px;
 }
 
 .schedule-grid {
-  margin-top: 2px;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: 30% 4% 66%;
-  row-gap: 1px;
-  font-size: 11px;
+  row-gap: 5px;
+  font-size: 12px;
 }
 
 .schedule-pay {
-  margin-top: 2px;
+  margin-top: 8px;
   display: grid;
   grid-template-columns: 30% 4% 44% 22%;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .schedule-sign {
   text-align: right;
-  font-size: 13px;
-  margin-top: 2px;
+  font-size: 14px;
+  margin-top: 6px;
 }
 
-.space-lg { margin-top: 8px; }
+.space-lg { margin-top: 14px; }
 
 @media print {
   @page {
     size: A4;
-    margin: 15mm;
+    margin: 8mm;
   }
 
   html,
@@ -280,123 +269,59 @@ main { padding: 6mm 0; }
     height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    overflow: visible !important;
     background: #fff !important;
     color: #000 !important;
-    font-size: 12pt !important;
-  }
-
-  body {
-    visibility: hidden !important;
-  }
-
-  #print-preview-container {
-    visibility: visible !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: none !important;
-    height: auto !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    transform: none !important;
-  }
-
-  #print-preview-container,
-  #print-preview-container * {
-    visibility: visible !important;
-  }
-
-  #print-preview-container * {
-    max-height: none !important;
-    transform: none !important;
   }
 
   .controls {
     display: none !important;
   }
 
-  #print-preview-container .page {
-    position: static !important;
+  main {
+    padding: 0 !important;
+  }
+
+  #print-preview-container .page,
+  .page {
     width: 100% !important;
     max-width: none !important;
     min-height: 0 !important;
-    max-height: none !important;
-    height: auto !important;
-    margin: 0 0 8mm !important;
-    padding: 0 !important;
+    margin: 0 !important;
+    padding: 8mm !important;
     background: #fff !important;
     box-shadow: none !important;
     border: none !important;
-    overflow: visible !important;
-    zoom: 1 !important;
-    font-size: 12pt !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
     break-after: page;
     page-break-after: always;
   }
 
-  #print-preview-container .page:last-child {
+  #print-preview-container .page:last-child,
+  .page:last-child {
     break-after: auto;
     page-break-after: auto;
-  }
-
-  #audit-notes-container {
-    position: static !important;
-    width: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    transform: none !important;
-    background: #fff !important;
-  }
-
-  #audit-notes-container,
-  #audit-notes-container table,
-  #audit-notes-container img,
-  #audit-notes-container svg,
-  #audit-notes-container canvas {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  #audit-notes-container .notes-grid > div {
-    width: auto !important;
-    max-width: none !important;
-  }
-
-  #print-preview-container .notes-grid,
-  #print-preview-container .notes-deductions,
-  #print-preview-container .notes-remarks,
-  #print-preview-container .notes-para,
-  #print-preview-container .notes-sign,
-  #print-preview-container .schedule-block,
-  #print-preview-container .register-table tr,
-  #print-preview-container .letter-row {
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
 }
 
 @media screen {
-  body { background: #e0e0e0; }
+  body {
+    background: #dbe1ea;
+  }
   main {
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding: 8px;
+    min-height: 100vh;
+    padding: 28px 18px 36px;
     flex-wrap: wrap;
   }
   .page {
     background: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border: 1px solid #ccc;
-    width: min(210mm, calc(100vw - 16px));
-    min-height: auto;
-    margin: 8px auto;
+    box-shadow: 0 18px 40px rgba(18, 32, 54, 0.14);
+    border: 1px solid rgba(19, 33, 56, 0.08);
+    border-radius: 2px;
+    width: min(210mm, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
+    min-height: 297mm;
+    margin: 0 auto;
   }
 }

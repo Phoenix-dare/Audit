@@ -8,8 +8,68 @@ import {
   updateWorkOrder, getWorkOrder, createContractor, createBudget
 } from "./api";
 import OfflineBanner from "./OfflineBanner";
-import { PRINT_PREVIEW_DOCUMENT } from "./printPreviewDocument";
+import { PRINT_PREVIEW_DOCUMENT, buildPrintPreviewDocument } from "./printPreviewDocument";
 import "./styles.css";
+
+const GST_DEDUCTION_THRESHOLD = 250000;
+const DEDUCTION_GST_RATE = 0.02;
+const BILL_GST_RATE = 0.18;
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const roundTo2 = (value) => Math.round(toNumber(value) * 100) / 100;
+
+const toDateInput = (value) => {
+  if (!value) return "";
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().split("T")[0];
+};
+
+const buildInitialBillForm = () => ({
+  billDate: new Date().toISOString().split("T")[0],
+  personCompany: "Person",
+  contractorId: "",
+  billRegisterNo: "",
+  budgetId: "",
+  nameOfWork: "",
+  workOrderNo: "",
+  agreementNo: "",
+  esasNo: "",
+  tsqsNo: "",
+  dateOfCompletion: "",
+  actualDateOfCompletion: "",
+  billAmount: 0,
+  baseValue: 0,
+  electricityCharges: 0,
+  gstToDeduct: 0,
+  uptodateBillAmount: 0,
+  estimateAmount: 0,
+  pac: 0,
+  partFinal: "Final",
+  fine: "No",
+  section: "",
+  cc: "I",
+  measurementByAE: "",
+  measurementByAEE: "",
+  mbookNumbers: "",
+  pages: "",
+  ccpf: "Final",
+  ccn: "I",
+  coy: "Person",
+  ued: "Yes",
+  eCharge: 0,
+  agdate: "",
+  wod: "",
+  doc: "",
+  adoc: "",
+  items: []
+});
 
 export default function App() {
   const [view, setView] = useState("form"); // form or list
@@ -18,45 +78,7 @@ export default function App() {
   const [bills, setBills] = useState([]);
   const [billsLoading, setBillsLoading] = useState(false);
 
-  const [billForm, setBillForm] = useState({
-    billDate: new Date().toISOString().split('T')[0],
-    personCompany: "Person",
-    contractorId: "",
-    billRegisterNo: "",
-    budgetId: "",
-    nameOfWork: "",
-    workOrderNo: "",
-    agreementNo: "",
-    esasNo: "",
-    tsqsNo: "",
-    dateOfCompletion: "",
-    actualDateOfCompletion: "",
-    billAmount: 0,
-    baseValue: 0,
-    electricityCharges: 0,
-    gstToDeduct: 0,
-    uptodateBillAmount: 0,
-    estimateAmount: 0,
-    pac: 0,
-    partFinal: "Final",
-    fine: "No",
-    section: "",
-    cc: "I",
-    measurementByAE: "",
-    measurementByAEE: "",
-    mbookNumbers: "",
-    pages: "",
-    ccpf: "Final",
-    ccn: "I",
-    coy: "Person",
-    ued: "Yes",
-    eCharge: 0,
-    agdate: "",
-    wod: "",
-    doc: "",
-    adoc: "",
-    items: []
-  });
+  const [billForm, setBillForm] = useState(buildInitialBillForm);
 
   const [result, setResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -65,6 +87,7 @@ export default function App() {
   const [contractorModalOpen, setContractorModalOpen] = useState(false);
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [newContractorName, setNewContractorName] = useState('');
+  const [newContractorType, setNewContractorType] = useState("Person");
   const [newBudgetCode, setNewBudgetCode] = useState('');
   const [newBudgetHead, setNewBudgetHead] = useState('');
   const [newBudgetAllocation, setNewBudgetAllocation] = useState(0);
@@ -73,81 +96,21 @@ export default function App() {
   // id of bill currently being edited (if any)
   const [editingId, setEditingId] = useState(null);
 
-  const getPreviewWindow = () => document.getElementById("preview-iframe")?.contentWindow || null;
-
   const printPreview = () => {
     if (!previewPayload) return;
 
-    const notifyPopupBlocked = () => {
-      alert("Please allow pop-ups for this site to print the full-page preview.");
-    };
-
-    const printWindow = window.open("", "audit_print_preview");
-    if (!printWindow) {
-      notifyPopupBlocked();
+    const previewWindow = document.getElementById("preview-iframe")?.contentWindow || null;
+    if (!previewWindow) {
+      alert("Preview is still loading. Please try again.");
       return;
     }
 
-    let started = false;
-    const startPrint = () => {
-      if (started) return;
-      started = true;
-
-      const pushPayload = () => {
-        // Post payload a few times so the preview listener receives it
-        // reliably after document load.
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          setTimeout(() => {
-            try {
-              printWindow.postMessage(previewPayload, "*");
-            } catch (error) {
-              console.error("popup print postMessage error", error);
-            }
-          }, attempt * 120);
-        }
-      };
-
-      const cleanup = () => {
-        setTimeout(() => {
-          try {
-            if (!printWindow.closed) {
-              printWindow.close();
-            }
-          } catch (error) {
-            console.error("popup print cleanup error", error);
-          }
-        }, 250);
-      };
-
-      pushPayload();
-      setTimeout(() => {
-        try {
-          printWindow.focus();
-          printWindow.print();
-        } catch (error) {
-          console.error("popup print error", error);
-        }
-      }, 900);
-
-      try {
-        printWindow.addEventListener("afterprint", cleanup, { once: true });
-      } catch (error) {
-        console.error("popup afterprint attach error", error);
-      }
-      setTimeout(cleanup, 15000);
-    };
-
     try {
-      printWindow.addEventListener("load", startPrint, { once: true });
-      printWindow.document.open();
-      printWindow.document.write(PRINT_PREVIEW_DOCUMENT);
-      printWindow.document.close();
-      if (printWindow.document.readyState === "complete") {
-        startPrint();
-      }
+      previewWindow.focus();
+      previewWindow.print();
     } catch (error) {
-      console.error("popup print setup error", error);
-      notifyPopupBlocked();
+      console.error("iframe print setup error", error);
+      alert("Unable to open the print dialog. Please retry.");
     }
   };
 
@@ -160,26 +123,6 @@ export default function App() {
       loadBills();
     }
   }, [view]);
-
-  // When preview modal opens, post payload to iframe preview
-  useEffect(() => {
-    if (!previewOpen || !previewPayload) return;
-    const tryPost = () => {
-      const previewWindow = getPreviewWindow();
-      if (previewWindow) {
-        try {
-          console.log('posting to iframe', previewPayload);
-          previewWindow.postMessage(previewPayload, '*');
-        } catch (err) {
-          console.error('iframe post error', err);
-        }
-      } else {
-        // retry shortly until iframe is available
-        setTimeout(tryPost, 200);
-      }
-    };
-    tryPost();
-  }, [previewOpen, previewPayload]);
 
   useEffect(() => {
     if (!previewOpen) return undefined;
@@ -220,9 +163,10 @@ export default function App() {
   const submitNewContractor = async () => {
     if (!newContractorName) return alert('Enter contractor name');
     try {
-      const created = await createContractor({ name: newContractorName });
+      const created = await createContractor({ name: newContractorName, entityType: newContractorType });
       setContractors(prev => [...prev, created]);
       setNewContractorName('');
+      setNewContractorType(billForm.personCompany || "Person");
       setContractorModalOpen(false);
       alert('Contractor added');
     } catch (err) {
@@ -292,24 +236,53 @@ export default function App() {
     }
 
     // populate form fields from bill object
-    setBillForm(prev => ({
-      ...prev,
-      billRegisterNo: full.agno || full.billRegisterNo || '',
-      billDate: full.billDate || prev.billDate,
-      contractorId: full.contractorId || '',
-      budgetId: full.budgetId || '',
-      nameOfWork: full.nameOfWork || '',
-      workOrderNo: full.workOrderNo || '',
-      agreementNo: full.agreementNo || '',
-      actualDateOfCompletion: full.adoc || full.actualDateOfCompletion || '',
-      partFinal: full.ccpf || prev.partFinal,
-      baseValue: full.baseAmount || full.ba || prev.baseValue,
-      billAmount: full.billAmount || prev.billAmount,
-      electricityCharges: full.eCharge || prev.electricityCharges,
-      pac: full.pac || prev.pac,
-      pages: full.pages || prev.pages,
-      mbookNumbers: full.mbookNumbers || prev.mbookNumbers,
-    }));
+    setBillForm((prev) => {
+      const baseValue = toNumber(full.baseValue ?? full.baseAmount ?? full.ba ?? prev.baseValue);
+      const savedBillAmount = toNumber(full.billAmount);
+      const billAmount = savedBillAmount > 0 ? savedBillAmount : roundTo2(baseValue * (1 + BILL_GST_RATE));
+      const gstToDeduct = toNumber(full.gstToDeduct) || (baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0);
+
+      return {
+        ...prev,
+        billDate: toDateInput(full.billDate) || prev.billDate,
+        personCompany: full.personCompany || full.coy || prev.personCompany,
+        contractorId: full.contractorId?._id || full.contractorId || "",
+        billRegisterNo: full.agno || full.billRegisterNo || "",
+        budgetId: full.budgetId?._id || full.budgetId || "",
+        nameOfWork: full.nameOfWork || "",
+        workOrderNo: full.workOrderNo || "",
+        agreementNo: full.agreementNo || "",
+        esasNo: full.esasNo || "",
+        tsqsNo: full.tsqsNo || "",
+        dateOfCompletion: toDateInput(full.dateOfCompletion || full.doc),
+        actualDateOfCompletion: toDateInput(full.actualDateOfCompletion || full.adoc),
+        billAmount,
+        baseValue,
+        electricityCharges: toNumber(full.electricityCharges ?? full.eCharge),
+        gstToDeduct,
+        uptodateBillAmount: toNumber(full.uptodateBillAmount),
+        estimateAmount: toNumber(full.estimateAmount),
+        pac: toNumber(full.pac),
+        partFinal: full.partFinal || full.ccpf || prev.partFinal,
+        fine: full.fine || (full.ued === "No" ? "Yes" : "No"),
+        section: full.section || "",
+        cc: full.cc || prev.cc,
+        measurementByAE: toDateInput(full.measurementByAE),
+        measurementByAEE: toDateInput(full.measurementByAEE),
+        mbookNumbers: full.mbookNumbers || "",
+        pages: full.pages || "",
+        ccpf: full.ccpf || full.partFinal || prev.ccpf,
+        ccn: full.ccn || prev.ccn,
+        coy: full.coy || full.personCompany || prev.coy,
+        ued: full.ued || prev.ued,
+        eCharge: toNumber(full.eCharge ?? full.electricityCharges),
+        agdate: toDateInput(full.agdate),
+        wod: toDateInput(full.wod),
+        doc: toDateInput(full.doc || full.dateOfCompletion),
+        adoc: toDateInput(full.adoc || full.actualDateOfCompletion),
+        items: Array.isArray(full.items) ? full.items : prev.items
+      };
+    });
     setView('form');
     setEditingId(full._id || null);
     // try to load calculation result if present
@@ -318,26 +291,70 @@ export default function App() {
 
   const onChange = (e) => {
     const { name, value } = e.target;
-    setBillForm((prev) => ({ ...prev, [name]: value }));
+    setBillForm((prev) => {
+      const next = { ...prev, [name]: value };
+
+      if (name === "baseValue") {
+        const baseValue = toNumber(value);
+        next.billAmount = roundTo2(baseValue * (1 + BILL_GST_RATE));
+        next.gstToDeduct = baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
+      }
+
+      if (name === "billAmount") {
+        const billAmount = toNumber(value);
+        const baseValue = roundTo2(billAmount / (1 + BILL_GST_RATE));
+        next.baseValue = baseValue;
+        next.gstToDeduct = baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
+      }
+
+      if (name === "personCompany") {
+        next.coy = value;
+      }
+
+      if (name === "partFinal") {
+        next.ccpf = value;
+      }
+
+      if (name === "fine") {
+        next.ued = value === "No" ? "Yes" : "No";
+      }
+
+      if (name === "electricityCharges") {
+        next.eCharge = toNumber(value);
+      }
+
+      if (name === "actualDateOfCompletion") {
+        next.adoc = value;
+      }
+
+      if (name === "dateOfCompletion") {
+        next.doc = value;
+      }
+
+      return next;
+    });
   };
+
+  const buildCalculationPayload = (form) => ({
+    cc: form.cc,
+    ccpf: form.partFinal,
+    ccn: form.ccn,
+    coy: form.personCompany,
+    ued: form.fine === "No" ? "Yes" : "No",
+    pac: Number(form.pac || 0),
+    ba: Number(form.baseValue || 0),
+    baseAmount: Number(form.baseValue || 0),
+    billAmount: Number(form.billAmount || 0),
+    eCharge: Number(form.electricityCharges || 0),
+    agdate: form.agdate,
+    wod: form.wod,
+    doc: form.doc || form.dateOfCompletion,
+    adoc: form.actualDateOfCompletion || form.adoc
+  });
 
   const onPreview = async () => {
     try {
-      const payload = {
-        cc: billForm.cc,
-        ccpf: billForm.partFinal,
-        ccn: billForm.ccn,
-        coy: billForm.personCompany,
-        ued: billForm.fine === "No" ? "Yes" : "No",
-        pac: Number(billForm.pac || 0),
-        ba: Number(billForm.baseValue || 0),
-        baseAmount: Number(billForm.baseValue || 0),
-        eCharge: Number(billForm.electricityCharges || 0),
-        agdate: billForm.agdate,
-        wod: billForm.wod,
-        doc: billForm.doc,
-        adoc: billForm.actualDateOfCompletion
-      };
+      const payload = buildCalculationPayload(billForm);
       console.log("Calculate payload:", payload);
       const data = await previewCalculation(payload);
       console.log("Calculate result:", data);
@@ -348,7 +365,7 @@ export default function App() {
     }
   };
 
-  const openPreview = (template) => {
+  const openPreview = async (template) => {
     const templateAliases = {
       "audit-enfacement": "aes-register",
       "audit-enfacement-sheet-register": "aes-register",
@@ -358,11 +375,22 @@ export default function App() {
     const selectedTemplate = templateAliases[template] || template;
     const selectedBudget = budgets.find((b) => b._id === billForm.budgetId);
 
+    let previewResult = result;
+    try {
+      previewResult = await previewCalculation(buildCalculationPayload(billForm));
+      setResult(previewResult);
+    } catch (error) {
+      console.error("Preview recalculate error:", error);
+      alert("Unable to refresh calculation. Showing last available values.");
+    }
+
     const contractor = contractors.find((c) => c._id === billForm.contractorId);
     const contractorName = contractor?.name || getContractorName(billForm.contractorId);
     const payload = {
       billRegisterNo: billForm.billRegisterNo,
       billDate: billForm.billDate,
+      personCompany: billForm.personCompany,
+      coy: billForm.personCompany,
       contractorName,
       contractorAddress: contractor?.address || "",
       nameOfWork: billForm.nameOfWork,
@@ -394,15 +422,15 @@ export default function App() {
       billAmount: Number(billForm.billAmount || 0),
       electricityCharges: Number(billForm.electricityCharges || 0),
       // attach calculation results if present
-      gst: result?.gst || 0,
-      it: result?.it || 0,
-      wwc: result?.wwc || 0,
-      retention: result?.retention || 0,
-      fineExecution: result?.fineagr || 0,
-      fineCompletion: result?.fine || 0,
+      gst: previewResult?.gst ?? Number(billForm.gstToDeduct || 0),
+      it: previewResult?.it || 0,
+      wwc: previewResult?.wwc || 0,
+      retention: previewResult?.retention || 0,
+      fineExecution: previewResult?.fineagr || 0,
+      fineCompletion: previewResult?.fine || 0,
       fineOthers: 0,
       // use computed cheque amount (based on bill amount - deductions)
-      chequeAmount: result?.cheque ?? result?.wit ?? 0
+      chequeAmount: previewResult?.cheque ?? previewResult?.wit ?? 0
     };
 
     // open modal with iframe preview and pass payload
@@ -421,22 +449,44 @@ export default function App() {
     try {
       const payload = {
         agno: billForm.billRegisterNo,
+        billRegisterNo: billForm.billRegisterNo,
+        billDate: billForm.billDate,
+        personCompany: billForm.personCompany,
         contractorId: billForm.contractorId,
         budgetId: billForm.budgetId,
+        nameOfWork: billForm.nameOfWork,
+        workOrderNo: billForm.workOrderNo,
+        agreementNo: billForm.agreementNo,
+        esasNo: billForm.esasNo,
+        tsqsNo: billForm.tsqsNo,
+        dateOfCompletion: billForm.dateOfCompletion || billForm.doc,
+        actualDateOfCompletion: billForm.actualDateOfCompletion || billForm.adoc,
+        section: billForm.section,
+        cc: billForm.cc,
+        measurementByAE: billForm.measurementByAE,
+        measurementByAEE: billForm.measurementByAEE,
+        mbookNumbers: billForm.mbookNumbers,
+        pages: billForm.pages,
+        estimateAmount: Number(billForm.estimateAmount || 0),
         ccpf: billForm.partFinal,
         ccn: billForm.ccn,
         coy: billForm.personCompany,
         ued: billForm.fine === "No" ? "Yes" : "No",
+        partFinal: billForm.partFinal,
+        fine: billForm.fine,
         pac: Number(billForm.pac || 0),
         ba: Number(billForm.baseValue || 0),
         baseAmount: Number(billForm.baseValue || 0),
+        baseValue: Number(billForm.baseValue || 0),
         billAmount: Number(billForm.billAmount || 0),
+        gstToDeduct: Number(billForm.gstToDeduct || 0),
         uptoDateBillAmount: Number(billForm.uptodateBillAmount || 0),
+        electricityCharges: Number(billForm.electricityCharges || 0),
         eCharge: Number(billForm.electricityCharges || 0),
         agdate: billForm.agdate,
         wod: billForm.wod,
-        doc: billForm.doc,
-        adoc: billForm.actualDateOfCompletion
+        doc: billForm.doc || billForm.dateOfCompletion,
+        adoc: billForm.actualDateOfCompletion || billForm.adoc
       };
       console.log("Save payload:", payload);
       let saved;
@@ -489,47 +539,14 @@ export default function App() {
   };
 
   const resetForm = () => {
-    setBillForm({
-      billDate: new Date().toISOString().split('T')[0],
-      personCompany: "Person",
-      contractorId: "",
-      billRegisterNo: "",
-      budgetId: "",
-      nameOfWork: "",
-      workOrderNo: "",
-      agreementNo: "",
-      esasNo: "",
-      tsqsNo: "",
-      dateOfCompletion: "",
-      actualDateOfCompletion: "",
-      billAmount: 0,
-      baseValue: 0,
-      electricityCharges: 0,
-      gstToDeduct: 0,
-      uptodateBillAmount: 0,
-      estimateAmount: 0,
-      pac: 0,
-      partFinal: "Final",
-      fine: "No",
-      section: "",
-      cc: "I",
-      measurementByAE: "",
-      measurementByAEE: "",
-      mbookNumbers: "",
-      pages: "",
-      ccpf: "Final",
-      ccn: "I",
-      coy: "Person",
-      ued: "Yes",
-      eCharge: 0,
-      agdate: "",
-      wod: "",
-      doc: "",
-      adoc: "",
-      items: []
-    });
+    setBillForm(buildInitialBillForm());
     setResult(null);
   };
+
+  const baseValueForDisplay = toNumber(result?.baseAmount ?? billForm.baseValue);
+  const gst18OnBaseForDisplay = roundTo2(baseValueForDisplay * BILL_GST_RATE);
+  const billAmountForDisplay = toNumber(result?.billAmount ?? billForm.billAmount);
+  const formatAmount = (value) => `₹${Math.round(toNumber(value)).toLocaleString("en-IN")}`;
 
   return (
     <div className="app">
@@ -574,14 +591,23 @@ export default function App() {
               </div>
               <div className="form-group">
                 <label>Contractor</label>
-                <div style={{display:'flex', gap:8}}>
+                <div className="field-combo">
                   <select name="contractorId" value={billForm.contractorId} onChange={onChange}>
                     <option value="">Select Contractor</option>
                     {contractors.map(c => (
                       <option key={c._id} value={c._id}>{c.name}</option>
                     ))}
                   </select>
-                  <button type="button" className="btn" onClick={() => setContractorModalOpen(true)}>Add</button>
+                  <button
+                    type="button"
+                    className="btn inline-add-btn"
+                    onClick={() => {
+                      setNewContractorType(billForm.personCompany || "Person");
+                      setContractorModalOpen(true);
+                    }}
+                  >
+                    Add
+                  </button>
                 </div>
               </div>
               <div className="form-group">
@@ -590,14 +616,14 @@ export default function App() {
               </div>
               <div className="form-group">
                 <label>Head of Account</label>
-                <div style={{display:'flex', gap:8}}>
+                <div className="field-combo">
                   <select name="budgetId" value={billForm.budgetId} onChange={onChange}>
                     <option value="">Select Budget</option>
                     {budgets.map(b => (
                       <option key={b._id} value={b._id}>{b.code} - {b.headOfAccount} (Bal: ₹{b.balance?.toLocaleString()})</option>
                     ))}
                   </select>
-                  <button type="button" className="btn" onClick={() => setBudgetModalOpen(true)}>Add</button>
+                  <button type="button" className="btn inline-add-btn" onClick={() => setBudgetModalOpen(true)}>Add</button>
                 </div>
               </div>
             </div>
@@ -724,7 +750,7 @@ export default function App() {
               </div>
               <div className="form-group">
                 <label>GST to be Deducted</label>
-                <input type="number" name="gstToDeduct" value={billForm.gstToDeduct} onChange={onChange} />
+                <input type="number" name="gstToDeduct" value={billForm.gstToDeduct} readOnly />
               </div>
               <div className="form-group">
                 <label>Electricity Charges</label>
@@ -774,37 +800,49 @@ export default function App() {
             <div className="calculation-result">
               <h4>Calculation Result</h4>
               <div className="result-grid">
-                <div className="result-item">
+                <div className="result-item addition">
+                  <span className="label">Base Value:</span>
+                  <span className="value">{formatAmount(baseValueForDisplay)}</span>
+                </div>
+                <div className="result-item addition">
+                  <span className="label">GST @ 18% (Added):</span>
+                  <span className="value">{formatAmount(gst18OnBaseForDisplay)}</span>
+                </div>
+                <div className="result-item addition">
+                  <span className="label">Bill Amount (Base + GST):</span>
+                  <span className="value">{formatAmount(billAmountForDisplay)}</span>
+                </div>
+                <div className="result-item deduction">
                   <span className="label">GST:</span>
-                  <span className="value">₹{result.gst}</span>
+                  <span className="value">{formatAmount(result.gst)}</span>
                 </div>
-                <div className="result-item">
+                <div className="result-item deduction">
                   <span className="label">Income Tax:</span>
-                  <span className="value">₹{result.it}</span>
+                  <span className="value">{formatAmount(result.it)}</span>
                 </div>
-                <div className="result-item">
+                <div className="result-item deduction">
                   <span className="label">WWC:</span>
-                  <span className="value">₹{result.wwc}</span>
+                  <span className="value">{formatAmount(result.wwc)}</span>
                 </div>
                 <div className="result-item">
                   <span className="label">Retention:</span>
-                  <span className="value">₹{result.retention}</span>
+                  <span className="value">{formatAmount(result.retention)}</span>
                 </div>
                 <div className="result-item">
                   <span className="label">Fine:</span>
-                  <span className="value">₹{result.fine}</span>
+                  <span className="value">{formatAmount(result.fine)}</span>
                 </div>
                 <div className="result-item">
                   <span className="label">Agreement Fine:</span>
-                  <span className="value">₹{result.fineagr}</span>
+                  <span className="value">{formatAmount(result.fineagr)}</span>
                 </div>
-                <div className="result-item highlight">
+                <div className="result-item highlight deduction">
                   <span className="label">Total Deductions:</span>
-                  <span className="value">₹{result.dwoit}</span>
+                  <span className="value">{formatAmount(result.dwoit)}</span>
                 </div>
                 <div className="result-item highlight">
                   <span className="label">Net Payable (WIT):</span>
-                  <span className="value">₹{result.wit}</span>
+                  <span className="value">{formatAmount(result.wit)}</span>
                 </div>
               </div>
             </div>
@@ -815,19 +853,17 @@ export default function App() {
             <div id="preview-print-container" className="preview-modal" onClick={() => setPreviewOpen(false)}>
               <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="preview-header">
-                  <div>Print Preview</div>
+                  <div className="preview-title">Preview</div>
                   <div className="preview-actions">
-                    <button className="btn" onClick={printPreview}>Print</button>
+                    <button className="btn" onClick={printPreview}>Print / Save PDF</button>
                     <button className="btn" onClick={() => setPreviewOpen(false)}>Close</button>
                   </div>
                 </div>
-                <iframe id="preview-iframe" title="preview" srcDoc={PRINT_PREVIEW_DOCUMENT} onLoad={() => {
-              if (previewPayload) {
-                console.log('iframe loaded, posting payload onLoad', previewPayload);
-                const w = getPreviewWindow();
-                if (w) w.postMessage(previewPayload, '*');
-              }
-            }} />
+                <iframe
+                  id="preview-iframe"
+                  title="preview"
+                  srcDoc={previewPayload ? buildPrintPreviewDocument(previewPayload) : PRINT_PREVIEW_DOCUMENT}
+                />
               </div>
             </div>
           )}
@@ -843,6 +879,11 @@ export default function App() {
                 <div style={{padding:12}}>
                   <label style={{display:'block', marginBottom:6}}>Name</label>
                   <input value={newContractorName} onChange={(e)=>setNewContractorName(e.target.value)} style={{width:'100%', padding:8, marginBottom:12}} />
+                  <label style={{display:'block', marginBottom:6}}>Type</label>
+                  <select value={newContractorType} onChange={(e)=>setNewContractorType(e.target.value)} style={{width:'100%', padding:8, marginBottom:12}}>
+                    <option>Person</option>
+                    <option>Company</option>
+                  </select>
                   <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                     <button className="btn" onClick={() => setContractorModalOpen(false)}>Cancel</button>
                     <button className="btn btn-save" onClick={submitNewContractor}>Add Contractor</button>

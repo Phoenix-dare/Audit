@@ -6,22 +6,16 @@
   <title>Print Preview - Engineering Reports</title>
   <link rel="stylesheet" href="print-preview.css">
   <script>
-    function doPrint() { window.print(); }
-
     window.addEventListener("keydown", (event) => {
       const isPrintShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p";
       if (!isPrintShortcut) return;
 
       event.preventDefault();
-      doPrint();
+      window.print();
     }, true);
   </script>
 </head>
 <body>
-  <div class="controls">
-    <button class="print-btn" onclick="doPrint()">Print</button>
-  </div>
-
   <main id="print-preview-container">
     <section class="page" data-template="aes-register">
       <h1 class="doc-title">AUDIT ENFACEMENT SHEET REGISTER 2026-2027</h1>
@@ -43,7 +37,7 @@
           <tr><td>M Book No.</td><td data-field="mBookNo"></td></tr>
           <tr><td>Base Value</td><td data-field="baseValue"></td></tr>
           <tr><td>Bill Amount</td><td data-field="billAmount"></td></tr>
-          <tr><td>IT (1% of Base Value)</td><td data-field="it"></td></tr>
+          <tr><td><span data-field="itLabel">IT (1% of Base Value)</span></td><td data-field="it"></td></tr>
           <tr><td>WWC (1% of Base Value)</td><td data-field="wwc"></td></tr>
           <tr><td>GST (2% of Base Value)</td><td data-field="gst"></td></tr>
           <tr><td>Retention (2.5% of Base Value)</td><td data-field="retention"></td></tr>
@@ -87,7 +81,7 @@
           <tr><td>M Book No.</td><td data-field="paymentMBookNo"></td></tr>
           <tr><td>Base Value</td><td data-field="paymentBaseValue"></td></tr>
           <tr><td>Bill Amount</td><td data-field="paymentBillAmount"></td></tr>
-          <tr><td>IT (1% of Base Value)</td><td data-field="paymentIt"></td></tr>
+          <tr><td><span data-field="paymentItLabel">IT (1% of Base Value)</span></td><td data-field="paymentIt"></td></tr>
           <tr><td>WWC (1% of Base Value)</td><td data-field="paymentWwc"></td></tr>
           <tr><td>GST (2% of Base Value)</td><td data-field="paymentGst"></td></tr>
           <tr><td>Retention (2.5% of Base Value)</td><td data-field="paymentRetention"></td></tr>
@@ -278,9 +272,9 @@
   </main>
 
   <script>
-    window.addEventListener("message", (e) => {
+    const applyPreviewData = (previewData) => {
       try {
-        const { template, payload } = e.data || {};
+        const { template, payload } = previewData || {};
         const pages = document.querySelectorAll(".page");
 
         if (template) {
@@ -350,11 +344,19 @@
           "notesExpenditure"
         ]);
 
+        const deductionFields = new Set([
+          "it", "wwc", "gst", "retention", "fineExecution", "fineCompletion", "fineOthers",
+          "paymentIt", "paymentWwc", "paymentGst", "paymentRetention", "paymentFineExec",
+          "paymentFineComp", "paymentFineOthers", "scheduleGstAmount", "scheduleItAmount",
+          "scheduleWwcAmount", "notesGst", "notesIt", "notesWwc", "notesRetention", "notesFine"
+        ]);
+
         const set = (field, value) => {
           const el = document.querySelector(`[data-field="${field}"]`);
           if (el) {
             const text = value == null ? "" : value;
             el.textContent = text;
+            el.classList.toggle("deduction-value", deductionFields.has(field));
             if (!amountFields.has(field)) return;
 
             const n = Number(text.toString().replace(/[^0-9.-]/g, ""));
@@ -392,6 +394,11 @@
         const mbookPages = [payload.mbookNumbers, payload.pages].filter(Boolean).join(" and ");
         const workOrderText = [payload.workOrderNo, formatDate(payload.workOrderDate)].filter(Boolean).join(" dated ");
         const agreementText = [payload.agreementNo, formatDate(payload.agreementDate)].filter(Boolean).join(" dated ");
+        const isCompany = String(payload.personCompany || payload.coy || "").toLowerCase() === "company";
+        const itRateLabel = isCompany ? "IT (2% of Base Value)" : "IT (1% of Base Value)";
+
+        set("itLabel", itRateLabel);
+        set("paymentItLabel", itRateLabel);
 
         set("aesRegisterNo", payload.billRegisterNo || "");
         set("aesDate", formatDate(payload.billDate));
@@ -514,7 +521,24 @@
       } catch (err) {
         console.error("Preview populate error", err);
       }
+    };
+
+    const bootPreview = () => {
+      if (window.__AUDIT_PREVIEW__) {
+        applyPreviewData(window.__AUDIT_PREVIEW__);
+      }
+    };
+
+    window.addEventListener("message", (event) => {
+      applyPreviewData(event.data || null);
     });
+
+    window.addEventListener("DOMContentLoaded", bootPreview);
+    window.addEventListener("audit-preview-ready", bootPreview);
+
+    if (document.readyState !== "loading") {
+      bootPreview();
+    }
   </script>
 </body>
 </html>

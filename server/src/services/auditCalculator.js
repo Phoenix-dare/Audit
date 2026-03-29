@@ -1,4 +1,5 @@
 const roundNearest = (value) => Math.round(Number(value || 0));
+const roundTwo = (value) => Math.round(Number(value || 0) * 100) / 100;
 
 const toNumber = (value) => {
   const n = Number(value);
@@ -16,28 +17,40 @@ const dateDiffDays = (start, end) => {
 
 export function calculateAudit(input) {
   const ccpf = (input.ccpf || "").trim();
-  const ccn = (input.ccn || "").trim();
-  const coy = (input.coy || "").trim();
+  const coy = (input.coy || input.personCompany || "").trim();
   const ued = (input.ued || "").trim();
 
   const pac = toNumber(input.pac);
-  let ba = toNumber(input.ba);
-  const baseAmount = toNumber(input.baseAmount);
+  const incomingBa = toNumber(input.ba);
+  const incomingBaseAmount = toNumber(input.baseAmount);
+  const incomingBillAmount = toNumber(input.billAmount);
   const eCharge = toNumber(input.eCharge);
 
+  // Keep bill amount and base value in sync:
+  // billAmount = base * 1.18 and base = billAmount / 1.18
+  let baseAmount = incomingBaseAmount || incomingBa;
+  let billAmount = incomingBillAmount;
+  if (baseAmount <= 0 && billAmount > 0) {
+    baseAmount = roundTwo(billAmount / 1.18);
+  }
+  if (billAmount <= 0 && baseAmount > 0) {
+    billAmount = roundTwo(baseAmount * 1.18);
+  }
+
+  let ba = baseAmount;
   let bv = ba - pac;
   if (bv < 0) bv = 0;
-  ba = ba > pac ? pac : ba;
 
   const nlc = ccpf === "Final" ? "Yes" : "Part Bill";
 
   let gst = 0;
-  // GST 2% deduction if base value exceeds 3.5 lakh OR contractor is a company
-  if (baseAmount > 350000 || coy === "Company") {
+  // GST deduction is 2% only when base value is above 2.5 lakh.
+  if (baseAmount > 250000) {
     gst = baseAmount * 0.02;
   }
   gst = roundNearest(gst);
 
+  // Companies: 2% IT. Persons: 1% IT.
   let it = coy === "Company" ? baseAmount * 0.02 : baseAmount * 0.01;
   it = roundNearest(it);
 
@@ -72,17 +85,15 @@ export function calculateAudit(input) {
   }
   fineagr = roundNearest(fineagr);
 
-  const dwoit = retention + fineagr + fine + gst + wwc + eCharge;
-  // original net payable (base minus all deductions + it)
-  const wit = ba - (dwoit + it);
+  const dwoit = retention + fineagr + fine + gst + wwc + eCharge + it;
+  const wit = roundNearest(billAmount - dwoit);
   const eh = it + wit;
-  // calculate cheque amount from the actual bill amount entered by user
-  const billAmt = toNumber(input.billAmount);
-  const cheque = billAmt - (dwoit + it);
+  const cheque = wit;
 
   return {
     pac,
     ba,
+    billAmount: roundNearest(billAmount),
     baseAmount,
     bv,
     nlc,
