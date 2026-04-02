@@ -44,6 +44,16 @@ export async function updateWorkOrder(id, payload) {
   return res.json();
 }
 
+export async function syncWorkOrder(payload) {
+  const res = await fetch(`${API_BASE}/work-orders/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Sync failed");
+  return res.json();
+}
+
 // ============= CONTRACTORS =============
 export async function getContractors() {
   const res = await fetch(`${API_BASE}/contractors`);

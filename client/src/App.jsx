@@ -1,19 +1,43 @@
-// Homepage form is modelled after the main data entry form (Form1) in the Access
-// database.  Any UI changes for the landing page should refer to Form1 for field
-// names, order and labels so that the web app mirrors the original Access layout.
-
-import { useState, useEffect } from "react";
+import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import {
-  createWorkOrder, previewCalculation, getContractors, getBudgets, getWorkOrders, updateBudget,
-  updateWorkOrder, getWorkOrder, createContractor, createBudget
+  createBudget,
+  createContractor,
+  getBudgets,
+  getContractors,
+  getWorkOrder,
+  getWorkOrders,
+  previewCalculation,
+  syncWorkOrder
 } from "./api";
-import OfflineBanner from "./OfflineBanner";
+import { calculateAudit } from "./calculateAudit";
+import {
+  createLocalKey,
+  getCachedBudgets,
+  getCachedContractors,
+  getCachedWorkOrders,
+  getMeta,
+  getPendingSyncs,
+  normalizeCachedWorkOrder,
+  removePendingSync,
+  replaceCachedWorkOrder,
+  saveCachedBudgets,
+  saveCachedContractors,
+  saveCachedWorkOrders,
+  savePendingSync,
+  setMeta,
+  upsertCachedWorkOrder
+} from "./offlineStore";
 import { PRINT_PREVIEW_DOCUMENT, buildPrintPreviewDocument } from "./printPreviewDocument";
+import SyncStatusBar from "./SyncStatusBar";
+import BillFormView from "./BillFormView";
+import BillsListView from "./BillsListView";
+import useOnlineStatus from "./useOnlineStatus";
 import "./styles.css";
 
 const GST_DEDUCTION_THRESHOLD = 250000;
 const DEDUCTION_GST_RATE = 0.02;
 const BILL_GST_RATE = 0.18;
+const LAST_SYNC_META_KEY = "lastSyncAt";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -29,6 +53,137 @@ const toDateInput = (value) => {
   const date = new Date(text);
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().split("T")[0];
+};
+
+const getBillTimestamp = (bill) => {
+  const value = bill?.updatedAtLocal || bill?.updatedAt || bill?.createdAt || bill?.billDate;
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.getTime() : 0;
+};
+
+const sortBills = (items) => [...items].sort((a, b) => getBillTimestamp(b) - getBillTimestamp(a));
+
+const sameBill = (left, right) => {
+  if (!left || !right) return false;
+  if (left.localKey && right.localKey && left.localKey === right.localKey) return true;
+  if (left.serverId && right.serverId && left.serverId === right.serverId) return true;
+  if (left.serverId && right._id && left.serverId === right._id) return true;
+  if (right.serverId && left._id && right.serverId === left._id) return true;
+  if (left.agno && right.agno && left.agno === right.agno) return true;
+  return false;
+};
+
+const upsertBillCollection = (items, bill) => {
+  const normalized = normalizeCachedWorkOrder(bill);
+  const nextItems = items.filter((item) => !sameBill(item, normalized));
+  nextItems.unshift(normalized);
+  return sortBills(nextItems);
+};
+
+const mergeBudgetCollection = (currentBudgets, updates) => {
+  const merged = [...currentBudgets];
+  for (const update of updates) {
+    const index = merged.findIndex((budget) => budget._id === update._id);
+    if (index >= 0) {
+      merged[index] = { ...merged[index], ...update };
+    } else {
+      merged.push(update);
+    }
+  }
+  return merged.sort((a, b) => String(a.code || "").localeCompare(String(b.code || "")));
+};
+
+const mergeServerBills = (serverBills, cachedBills) => {
+  const merged = serverBills.map((serverBill) => {
+    const matchingCachedBill = cachedBills.find((candidate) =>
+      sameBill(candidate, { _id: serverBill._id, serverId: serverBill._id, agno: serverBill.agno })
+    );
+
+    if (matchingCachedBill && matchingCachedBill.syncStatus && matchingCachedBill.syncStatus !== "synced") {
+      return normalizeCachedWorkOrder(
+        {
+          ...serverBill,
+          ...matchingCachedBill,
+          calculations: matchingCachedBill.calculations || serverBill.calculations
+        },
+        {
+          localKey: matchingCachedBill.localKey,
+          serverId: serverBill._id,
+          syncStatus: matchingCachedBill.syncStatus
+        }
+      );
+    }
+
+    return normalizeCachedWorkOrder(serverBill, {
+      localKey: matchingCachedBill?.localKey || serverBill.localKey || serverBill._id,
+      serverId: serverBill._id,
+      syncStatus: "synced"
+    });
+  });
+
+  for (const cachedBill of cachedBills) {
+    if (!merged.some((item) => sameBill(item, cachedBill))) {
+      merged.push(normalizeCachedWorkOrder(cachedBill));
+    }
+  }
+
+  return sortBills(merged);
+};
+
+const filterBills = (items, query) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return items;
+
+  return items.filter((bill) =>
+    [
+      bill.agno,
+      bill.section,
+      bill.workOrderNo,
+      bill.nameOfWork,
+      String(bill.baseAmount || bill.ba || ""),
+      String(bill.coy || ""),
+      bill.syncStatus
+    ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery))
+  );
+};
+
+const formatSyncTime = (value) => {
+  if (!value) return "No sync yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No sync yet";
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
+const getSyncStatusLabel = (bill) => {
+  switch (bill.syncStatus) {
+    case "pending":
+      return "Pending Sync";
+    case "syncing":
+      return "Syncing";
+    case "failed":
+      return "Sync Failed";
+    default:
+      return bill.status || "Draft";
+  }
+};
+
+const getSyncStatusClass = (bill) => {
+  switch (bill.syncStatus) {
+    case "pending":
+      return "status-badge pending";
+    case "syncing":
+      return "status-badge syncing";
+    case "failed":
+      return "status-badge failed";
+    default:
+      return "status-badge synced";
+  }
 };
 
 const buildInitialBillForm = () => ({
@@ -71,34 +226,108 @@ const buildInitialBillForm = () => ({
   items: []
 });
 
+const buildCalculationPayload = (form) => ({
+  cc: form.cc,
+  ccpf: form.partFinal,
+  ccn: form.ccn,
+  coy: form.personCompany,
+  ued: form.fine === "No" ? "Yes" : "No",
+  pac: Number(form.pac || 0),
+  ba: Number(form.baseValue || 0),
+  baseAmount: Number(form.baseValue || 0),
+  billAmount: Number(form.billAmount || 0),
+  eCharge: Number(form.electricityCharges || 0),
+  agdate: form.agdate,
+  wod: form.wod,
+  doc: form.doc || form.dateOfCompletion,
+  adoc: form.actualDateOfCompletion || form.adoc
+});
+
+const buildWorkOrderPayload = (form) => ({
+  agno: form.billRegisterNo,
+  billRegisterNo: form.billRegisterNo,
+  billDate: form.billDate,
+  personCompany: form.personCompany,
+  contractorId: form.contractorId,
+  budgetId: form.budgetId,
+  nameOfWork: form.nameOfWork,
+  workOrderNo: form.workOrderNo,
+  agreementNo: form.agreementNo,
+  esasNo: form.esasNo,
+  tsqsNo: form.tsqsNo,
+  dateOfCompletion: form.dateOfCompletion || form.doc,
+  actualDateOfCompletion: form.actualDateOfCompletion || form.adoc,
+  section: form.section,
+  cc: form.cc,
+  measurementByAE: form.measurementByAE,
+  measurementByAEE: form.measurementByAEE,
+  mbookNumbers: form.mbookNumbers,
+  pages: form.pages,
+  estimateAmount: Number(form.estimateAmount || 0),
+  ccpf: form.partFinal,
+  ccn: form.ccn,
+  coy: form.personCompany,
+  ued: form.fine === "No" ? "Yes" : "No",
+  partFinal: form.partFinal,
+  fine: form.fine,
+  pac: Number(form.pac || 0),
+  ba: Number(form.baseValue || 0),
+  baseAmount: Number(form.baseValue || 0),
+  baseValue: Number(form.baseValue || 0),
+  billAmount: Number(form.billAmount || 0),
+  gstToDeduct: Number(form.gstToDeduct || 0),
+  uptoDateBillAmount: Number(form.uptodateBillAmount || 0),
+  electricityCharges: Number(form.electricityCharges || 0),
+  eCharge: Number(form.electricityCharges || 0),
+  agdate: form.agdate,
+  wod: form.wod,
+  doc: form.doc || form.dateOfCompletion,
+  adoc: form.actualDateOfCompletion || form.adoc
+});
+
 export default function App() {
-  const [view, setView] = useState("form"); // form or list
+  const online = useOnlineStatus();
+  const [view, setView] = useState("form");
   const [contractors, setContractors] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [bills, setBills] = useState([]);
   const [billsLoading, setBillsLoading] = useState(false);
-
   const [billForm, setBillForm] = useState(buildInitialBillForm);
-
   const [result, setResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewPayload, setPreviewPayload] = useState(null);
+  const [previewDocument, setPreviewDocument] = useState(PRINT_PREVIEW_DOCUMENT);
   const [contractorModalOpen, setContractorModalOpen] = useState(false);
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
-  const [newContractorName, setNewContractorName] = useState('');
+  const [newContractorName, setNewContractorName] = useState("");
   const [newContractorType, setNewContractorType] = useState("Person");
-  const [newBudgetCode, setNewBudgetCode] = useState('');
-  const [newBudgetHead, setNewBudgetHead] = useState('');
+  const [newBudgetCode, setNewBudgetCode] = useState("");
+  const [newBudgetHead, setNewBudgetHead] = useState("");
   const [newBudgetAllocation, setNewBudgetAllocation] = useState(0);
-  // search term for bills list
-  const [searchTerm, setSearchTerm] = useState('');
-  // id of bill currently being edited (if any)
+  const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [syncState, setSyncState] = useState("idle");
+  const [syncMessage, setSyncMessage] = useState("Ready");
+  const [lastSyncAt, setLastSyncAt] = useState("");
+  const [liteMode, setLiteMode] = useState(false);
+
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const pendingSyncCount = bills.filter((bill) => bill.syncStatus && bill.syncStatus !== "synced").length;
+  const filteredBills = filterBills(bills, deferredSearchTerm || "");
+
+  const applyBillState = (nextBills) => {
+    const sortedBills = sortBills(nextBills);
+    startTransition(() => setBills(sortedBills));
+    return sortedBills;
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewDocument(PRINT_PREVIEW_DOCUMENT);
+  };
 
   const printPreview = () => {
-    if (!previewPayload) return;
-
+    if (!previewOpen) return;
     const previewWindow = document.getElementById("preview-iframe")?.contentWindow || null;
     if (!previewWindow) {
       alert("Preview is still loading. Please try again.");
@@ -114,15 +343,198 @@ export default function App() {
     }
   };
 
+  const getContractorName = (contractorId) => {
+    const normalizedId = contractorId?._id || contractorId;
+    const contractor = contractors.find((candidate) => candidate._id === normalizedId);
+    return contractor ? contractor.name : "Unknown";
+  };
+
+  const loadMasterData = async ({ silent = false } = {}) => {
+    try {
+      const [contractorData, budgetData] = await Promise.all([getContractors(), getBudgets()]);
+      const nextContractors = Array.isArray(contractorData) ? contractorData : [];
+      const nextBudgets = Array.isArray(budgetData) ? budgetData : [];
+      await Promise.all([saveCachedContractors(nextContractors), saveCachedBudgets(nextBudgets)]);
+      startTransition(() => {
+        setContractors(nextContractors);
+        setBudgets(nextBudgets);
+      });
+      return { contractors: nextContractors, budgets: nextBudgets };
+    } catch (error) {
+      console.error("Error loading master data:", error);
+      const [cachedContractors, cachedBudgets] = await Promise.all([
+        getCachedContractors(),
+        getCachedBudgets()
+      ]);
+      if (cachedContractors.length || cachedBudgets.length) {
+        startTransition(() => {
+          setContractors(cachedContractors);
+          setBudgets(cachedBudgets);
+        });
+        if (!silent) setSyncMessage("Using locally cached contractor and budget data.");
+        return { contractors: cachedContractors, budgets: cachedBudgets };
+      }
+      if (!silent) alert("Failed to load master data: " + error.message);
+      throw error;
+    }
+  };
+
+  const loadBills = async ({ silent = false } = {}) => {
+    setBillsLoading(true);
+    try {
+      const [remoteBills, cachedBills] = await Promise.all([getWorkOrders(), getCachedWorkOrders()]);
+      const mergedBills = mergeServerBills(Array.isArray(remoteBills) ? remoteBills : [], cachedBills);
+      await saveCachedWorkOrders(mergedBills);
+      applyBillState(mergedBills);
+      return mergedBills;
+    } catch (error) {
+      console.error("Error loading bills:", error);
+      const cachedBills = sortBills(await getCachedWorkOrders());
+      if (cachedBills.length) {
+        applyBillState(cachedBills);
+        if (!silent) setSyncMessage("Showing locally saved bills.");
+        return cachedBills;
+      }
+      if (!silent) alert("Failed to load bills: " + error.message);
+      return [];
+    } finally {
+      setBillsLoading(false);
+    }
+  };
+
+  const syncPendingWorkOrders = async ({ manual = false } = {}) => {
+    if (!online) {
+      if (manual) {
+        alert("You are offline. The saved bills will sync when the connection returns.");
+      }
+      return { syncedCount: 0 };
+    }
+
+    if (syncState === "syncing") {
+      return { syncedCount: 0 };
+    }
+
+    const pendingEntries = await getPendingSyncs();
+    if (pendingEntries.length === 0) {
+      if (manual) {
+        await Promise.all([loadMasterData({ silent: true }), loadBills({ silent: true })]);
+      }
+      setSyncState("idle");
+      setSyncMessage("All changes are already synced.");
+      return { syncedCount: 0 };
+    }
+
+    setSyncState("syncing");
+    setSyncMessage(`Syncing ${pendingEntries.length} change${pendingEntries.length === 1 ? "" : "s"}...`);
+
+    let syncedCount = 0;
+    let workingBills = sortBills(await getCachedWorkOrders());
+    let workingBudgets = await getCachedBudgets();
+
+    for (const entry of pendingEntries.sort((left, right) => {
+      const leftTime = new Date(left.queuedAt || 0).getTime();
+      const rightTime = new Date(right.queuedAt || 0).getTime();
+      return leftTime - rightTime;
+    })) {
+      const currentBill = workingBills.find((bill) => bill.localKey === entry.localKey);
+      if (currentBill) {
+        const syncingBill = normalizeCachedWorkOrder(currentBill, { syncStatus: "syncing" });
+        workingBills = upsertBillCollection(workingBills, syncingBill);
+        await upsertCachedWorkOrder(syncingBill);
+        applyBillState(workingBills);
+      }
+
+      try {
+        const response = await syncWorkOrder(entry.payload);
+        const syncedBill = normalizeCachedWorkOrder(response.workOrder, {
+          localKey: entry.localKey,
+          serverId: response.workOrder._id,
+          syncStatus: "synced"
+        });
+
+        workingBills = upsertBillCollection(workingBills, syncedBill);
+        await replaceCachedWorkOrder(entry.localKey, syncedBill);
+        await removePendingSync(entry.localKey);
+
+        if (Array.isArray(response.budgetUpdates) && response.budgetUpdates.length > 0) {
+          workingBudgets = mergeBudgetCollection(workingBudgets, response.budgetUpdates);
+          await saveCachedBudgets(workingBudgets);
+          startTransition(() => setBudgets(workingBudgets));
+        }
+
+        applyBillState(workingBills);
+        syncedCount += 1;
+      } catch (error) {
+        console.error("Sync failed:", error);
+        if (currentBill) {
+          const failedBill = normalizeCachedWorkOrder(currentBill, { syncStatus: "failed" });
+          workingBills = upsertBillCollection(workingBills, failedBill);
+          await upsertCachedWorkOrder(failedBill);
+          applyBillState(workingBills);
+        }
+        setSyncState("error");
+        setSyncMessage(error.message || "Sync failed.");
+        if (manual) {
+          alert("Sync failed: " + (error.message || error));
+        }
+        return { syncedCount, error };
+      }
+    }
+
+    const syncTime = new Date().toISOString();
+    await setMeta(LAST_SYNC_META_KEY, syncTime);
+    setLastSyncAt(syncTime);
+    setSyncState("idle");
+    setSyncMessage(
+      syncedCount > 0
+        ? `Synced ${syncedCount} change${syncedCount === 1 ? "" : "s"}.`
+        : "All changes are already synced."
+    );
+    await Promise.all([loadMasterData({ silent: true }), loadBills({ silent: true })]);
+    return { syncedCount };
+  };
+
   useEffect(() => {
-    loadMasterData();
+    const hydrate = async () => {
+      try {
+        const [cachedContractors, cachedBudgets, cachedBills, cachedLastSyncAt] = await Promise.all([
+          getCachedContractors(),
+          getCachedBudgets(),
+          getCachedWorkOrders(),
+          getMeta(LAST_SYNC_META_KEY)
+        ]);
+
+        startTransition(() => {
+          if (cachedContractors.length) setContractors(cachedContractors);
+          if (cachedBudgets.length) setBudgets(cachedBudgets);
+          if (cachedBills.length) setBills(sortBills(cachedBills));
+        });
+        if (cachedLastSyncAt) {
+          setLastSyncAt(cachedLastSyncAt);
+        }
+      } catch (error) {
+        console.warn("Offline cache hydrate failed", error);
+      }
+
+      await Promise.all([loadMasterData({ silent: true }), loadBills({ silent: true })]);
+    };
+
+    hydrate();
   }, []);
 
   useEffect(() => {
     if (view === "list") {
-      loadBills();
+      loadBills({ silent: true });
     }
   }, [view]);
+
+  useEffect(() => {
+    if (!online) {
+      setSyncMessage("Offline mode: local saves will sync later.");
+      return;
+    }
+    syncPendingWorkOrders();
+  }, [online]);
 
   useEffect(() => {
     if (!previewOpen) return undefined;
@@ -137,110 +549,111 @@ export default function App() {
 
     window.addEventListener("keydown", handlePrintShortcut);
     return () => window.removeEventListener("keydown", handlePrintShortcut);
-  }, [previewOpen, previewPayload]);
+  }, [previewOpen]);
 
   useEffect(() => {
     document.body.classList.toggle("preview-print-active", previewOpen);
     return () => document.body.classList.remove("preview-print-active");
   }, [previewOpen]);
 
-  const loadMasterData = async () => {
-    try {
-      const [c, b] = await Promise.all([
-        getContractors(),
-        getBudgets()
-      ]);
-      console.log("Contractors loaded:", c);
-      console.log("Budgets loaded:", b);
-      setContractors(Array.isArray(c) ? c : []);
-      setBudgets(Array.isArray(b) ? b : []);
-    } catch (error) {
-      console.error("Error loading master data:", error);
-      alert("Failed to load master data: " + error.message);
-    }
-  };
+  useEffect(() => {
+    const lowMemory =
+      typeof navigator !== "undefined" &&
+      ((navigator.deviceMemory && navigator.deviceMemory <= 4) ||
+        (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4));
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const nextLiteMode = Boolean(lowMemory || prefersReducedMotion);
+    setLiteMode(nextLiteMode);
+    document.body.classList.toggle("reduced-effects", nextLiteMode);
+    return () => document.body.classList.remove("reduced-effects");
+  }, []);
 
   const submitNewContractor = async () => {
-    if (!newContractorName) return alert('Enter contractor name');
+    if (!newContractorName) return alert("Enter contractor name");
+    if (!online) {
+      alert("New contractors can be added once you are back online.");
+      return;
+    }
+
     try {
-      const created = await createContractor({ name: newContractorName, entityType: newContractorType });
-      setContractors(prev => [...prev, created]);
-      setNewContractorName('');
+      const created = await createContractor({
+        name: newContractorName,
+        entityType: newContractorType
+      });
+      const nextContractors = [...contractors, created].sort((left, right) =>
+        String(left.name || "").localeCompare(String(right.name || ""))
+      );
+      await saveCachedContractors(nextContractors);
+      startTransition(() => setContractors(nextContractors));
+      setNewContractorName("");
       setNewContractorType(billForm.personCompany || "Person");
       setContractorModalOpen(false);
-      alert('Contractor added');
-    } catch (err) {
-      console.error('Create contractor failed', err);
-      alert('Failed to create contractor: ' + (err.message || err));
+      setSyncMessage("Contractor added.");
+    } catch (error) {
+      console.error("Create contractor failed", error);
+      alert("Failed to create contractor: " + (error.message || error));
     }
   };
 
   const submitNewBudget = async () => {
-    if (!newBudgetCode || !newBudgetHead) return alert('Fill budget code and head');
+    if (!newBudgetCode || !newBudgetHead) return alert("Fill budget code and head");
+    if (!online) {
+      alert("New budget heads can be added once you are back online.");
+      return;
+    }
+
     const allocation = Number(newBudgetAllocation || 0);
     try {
-      const payload = { code: newBudgetCode, headOfAccount: newBudgetHead, allocation, balance: allocation };
+      const payload = {
+        code: newBudgetCode,
+        headOfAccount: newBudgetHead,
+        allocation,
+        balance: allocation
+      };
       const created = await createBudget(payload);
-      setBudgets(prev => [...prev, created]);
-      setNewBudgetCode(''); setNewBudgetHead(''); setNewBudgetAllocation(0);
+      const nextBudgets = mergeBudgetCollection(budgets, [created]);
+      await saveCachedBudgets(nextBudgets);
+      startTransition(() => setBudgets(nextBudgets));
+      setNewBudgetCode("");
+      setNewBudgetHead("");
+      setNewBudgetAllocation(0);
       setBudgetModalOpen(false);
-      alert('Budget head added');
-    } catch (err) {
-      console.error('Create budget failed', err);
-      alert('Failed to create budget: ' + (err.message || err));
-    }
-  };
-
-  const loadBills = async () => {
-    setBillsLoading(true);
-    try {
-      const data = await getWorkOrders(searchTerm && searchTerm.trim() ? searchTerm.trim() : undefined);
-      console.log("Bills loaded:", data);
-      setBills(Array.isArray(data) ? data : []);
+      setSyncMessage("Budget head added.");
     } catch (error) {
-      console.error("Error loading bills:", error);
-      alert("Failed to load bills: " + error.message);
-    } finally {
-      setBillsLoading(false);
+      console.error("Create budget failed", error);
+      alert("Failed to create budget: " + (error.message || error));
     }
-  };
-
-  const filteredBills = (searchTerm || '').trim()
-    ? bills.filter(b => {
-        const q = (searchTerm || '').toLowerCase();
-        return [
-          b.agno,
-          b.section,
-          b.workOrderNo,
-          b.nameOfWork,
-          String(b.baseAmount || b.ba || ''),
-          String(b.coy || ''),
-        ].some(v => String(v || '').toLowerCase().includes(q));
-      })
-    : bills;
-
-  const getContractorName = (contractorId) => {
-    const contractor = contractors.find(c => c._id === contractorId);
-    return contractor ? contractor.name : "Unknown";
   };
 
   const openBill = async (bill) => {
     if (!bill) return;
+
     let full = bill;
-    try {
-      if (bill._id) {
-        full = await getWorkOrder(bill._id);
+    const remoteId = bill.serverId || (String(bill._id || "").startsWith("work-order:") ? "" : bill._id);
+    if (remoteId && online) {
+      try {
+        const fetched = await getWorkOrder(remoteId);
+        full = normalizeCachedWorkOrder(fetched, {
+          localKey: bill.localKey,
+          serverId: fetched._id,
+          syncStatus: bill.syncStatus || "synced"
+        });
+      } catch (error) {
+        console.warn("Failed to fetch full bill, using cached item", error);
       }
-    } catch (err) {
-      console.warn('Failed to fetch full bill, using list item', err);
     }
 
-    // populate form fields from bill object
     setBillForm((prev) => {
       const baseValue = toNumber(full.baseValue ?? full.baseAmount ?? full.ba ?? prev.baseValue);
       const savedBillAmount = toNumber(full.billAmount);
-      const billAmount = savedBillAmount > 0 ? savedBillAmount : roundTo2(baseValue * (1 + BILL_GST_RATE));
-      const gstToDeduct = toNumber(full.gstToDeduct) || (baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0);
+      const billAmount =
+        savedBillAmount > 0 ? savedBillAmount : roundTo2(baseValue * (1 + BILL_GST_RATE));
+      const gstToDeduct =
+        toNumber(full.gstToDeduct) ||
+        (baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0);
 
       return {
         ...prev,
@@ -260,7 +673,7 @@ export default function App() {
         baseValue,
         electricityCharges: toNumber(full.electricityCharges ?? full.eCharge),
         gstToDeduct,
-        uptodateBillAmount: toNumber(full.uptodateBillAmount),
+        uptodateBillAmount: toNumber(full.uptodateBillAmount ?? full.uptoDateBillAmount),
         estimateAmount: toNumber(full.estimateAmount),
         pac: toNumber(full.pac),
         partFinal: full.partFinal || full.ccpf || prev.partFinal,
@@ -283,28 +696,30 @@ export default function App() {
         items: Array.isArray(full.items) ? full.items : prev.items
       };
     });
-    setView('form');
-    setEditingId(full._id || null);
-    // try to load calculation result if present
-    if (full.calculations) setResult(full.calculations);
+
+    setView("form");
+    setEditingId(full.localKey || full.serverId || full._id || null);
+    setResult(full.calculations || calculateAudit(full));
   };
 
-  const onChange = (e) => {
-    const { name, value } = e.target;
+  const onChange = (event) => {
+    const { name, value } = event.target;
     setBillForm((prev) => {
       const next = { ...prev, [name]: value };
 
       if (name === "baseValue") {
         const baseValue = toNumber(value);
         next.billAmount = roundTo2(baseValue * (1 + BILL_GST_RATE));
-        next.gstToDeduct = baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
+        next.gstToDeduct =
+          baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
       }
 
       if (name === "billAmount") {
         const billAmount = toNumber(value);
         const baseValue = roundTo2(billAmount / (1 + BILL_GST_RATE));
         next.baseValue = baseValue;
-        next.gstToDeduct = baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
+        next.gstToDeduct =
+          baseValue > GST_DEDUCTION_THRESHOLD ? roundTo2(baseValue * DEDUCTION_GST_RATE) : 0;
       }
 
       if (name === "personCompany") {
@@ -335,32 +750,34 @@ export default function App() {
     });
   };
 
-  const buildCalculationPayload = (form) => ({
-    cc: form.cc,
-    ccpf: form.partFinal,
-    ccn: form.ccn,
-    coy: form.personCompany,
-    ued: form.fine === "No" ? "Yes" : "No",
-    pac: Number(form.pac || 0),
-    ba: Number(form.baseValue || 0),
-    baseAmount: Number(form.baseValue || 0),
-    billAmount: Number(form.billAmount || 0),
-    eCharge: Number(form.electricityCharges || 0),
-    agdate: form.agdate,
-    wod: form.wod,
-    doc: form.doc || form.dateOfCompletion,
-    adoc: form.actualDateOfCompletion || form.adoc
-  });
+  const runCalculation = async (form) => {
+    const payload = buildCalculationPayload(form);
+
+    if (!online) {
+      const offlineCalculation = calculateAudit(payload);
+      setResult(offlineCalculation);
+      setSyncMessage("Calculated locally while offline.");
+      return offlineCalculation;
+    }
+
+    try {
+      const data = await previewCalculation(payload);
+      setResult(data);
+      return data;
+    } catch (error) {
+      console.error("Calculate error:", error);
+      const offlineCalculation = calculateAudit(payload);
+      setResult(offlineCalculation);
+      setSyncMessage("Used local calculation because the server was unavailable.");
+      return offlineCalculation;
+    }
+  };
 
   const onPreview = async () => {
     try {
-      const payload = buildCalculationPayload(billForm);
-      console.log("Calculate payload:", payload);
-      const data = await previewCalculation(payload);
-      console.log("Calculate result:", data);
-      setResult(data);
+      await runCalculation(billForm);
     } catch (error) {
-      console.error("Calculate error:", error);
+      console.error("Preview calculation failed", error);
       alert("Calculate Error: " + error.message);
     }
   };
@@ -373,18 +790,14 @@ export default function App() {
       "note-to-fo": "audit-enfacement-format"
     };
     const selectedTemplate = templateAliases[template] || template;
-    const selectedBudget = budgets.find((b) => b._id === billForm.budgetId);
+    const selectedBudget = budgets.find((budget) => budget._id === billForm.budgetId);
+    const contractor = contractors.find((candidate) => candidate._id === billForm.contractorId);
 
     let previewResult = result;
-    try {
-      previewResult = await previewCalculation(buildCalculationPayload(billForm));
-      setResult(previewResult);
-    } catch (error) {
-      console.error("Preview recalculate error:", error);
-      alert("Unable to refresh calculation. Showing last available values.");
+    if (!previewResult) {
+      previewResult = await runCalculation(billForm);
     }
 
-    const contractor = contractors.find((c) => c._id === billForm.contractorId);
     const contractorName = contractor?.name || getContractorName(billForm.contractorId);
     const payload = {
       billRegisterNo: billForm.billRegisterNo,
@@ -421,7 +834,6 @@ export default function App() {
       baseValue: Number(billForm.baseValue || 0),
       billAmount: Number(billForm.billAmount || 0),
       electricityCharges: Number(billForm.electricityCharges || 0),
-      // attach calculation results if present
       gst: previewResult?.gst ?? Number(billForm.gstToDeduct || 0),
       it: previewResult?.it || 0,
       wwc: previewResult?.wwc || 0,
@@ -429,15 +841,12 @@ export default function App() {
       fineExecution: previewResult?.fineagr || 0,
       fineCompletion: previewResult?.fine || 0,
       fineOthers: 0,
-      // use computed cheque amount (based on bill amount - deductions)
       chequeAmount: previewResult?.cheque ?? previewResult?.wit ?? 0
     };
 
-    // open modal with iframe preview and pass payload
-    setPreviewPayload({ template: selectedTemplate, payload });
+    const nextPreview = { template: selectedTemplate, payload };
+    setPreviewDocument(buildPrintPreviewDocument(nextPreview));
     setPreviewOpen(true);
-
-    // modal only (no fallback tab)
   };
 
   const onSave = async () => {
@@ -445,90 +854,49 @@ export default function App() {
       alert("Please fill in Bill Register No");
       return;
     }
+
     setSaving(true);
     try {
-      const payload = {
-        agno: billForm.billRegisterNo,
-        billRegisterNo: billForm.billRegisterNo,
-        billDate: billForm.billDate,
-        personCompany: billForm.personCompany,
-        contractorId: billForm.contractorId,
-        budgetId: billForm.budgetId,
-        nameOfWork: billForm.nameOfWork,
-        workOrderNo: billForm.workOrderNo,
-        agreementNo: billForm.agreementNo,
-        esasNo: billForm.esasNo,
-        tsqsNo: billForm.tsqsNo,
-        dateOfCompletion: billForm.dateOfCompletion || billForm.doc,
-        actualDateOfCompletion: billForm.actualDateOfCompletion || billForm.adoc,
-        section: billForm.section,
-        cc: billForm.cc,
-        measurementByAE: billForm.measurementByAE,
-        measurementByAEE: billForm.measurementByAEE,
-        mbookNumbers: billForm.mbookNumbers,
-        pages: billForm.pages,
-        estimateAmount: Number(billForm.estimateAmount || 0),
-        ccpf: billForm.partFinal,
-        ccn: billForm.ccn,
-        coy: billForm.personCompany,
-        ued: billForm.fine === "No" ? "Yes" : "No",
-        partFinal: billForm.partFinal,
-        fine: billForm.fine,
-        pac: Number(billForm.pac || 0),
-        ba: Number(billForm.baseValue || 0),
-        baseAmount: Number(billForm.baseValue || 0),
-        baseValue: Number(billForm.baseValue || 0),
-        billAmount: Number(billForm.billAmount || 0),
-        gstToDeduct: Number(billForm.gstToDeduct || 0),
-        uptoDateBillAmount: Number(billForm.uptodateBillAmount || 0),
-        electricityCharges: Number(billForm.electricityCharges || 0),
-        eCharge: Number(billForm.electricityCharges || 0),
-        agdate: billForm.agdate,
-        wod: billForm.wod,
-        doc: billForm.doc || billForm.dateOfCompletion,
-        adoc: billForm.actualDateOfCompletion || billForm.adoc
-      };
-      console.log("Save payload:", payload);
-      let saved;
-      if (editingId) {
-        saved = await updateWorkOrder(editingId, payload);
-        console.log("Updated work order:", saved);
-        alert("Bill Updated Successfully! ID: " + saved._id);
-      } else {
-        saved = await createWorkOrder(payload);
-        console.log("Saved work order:", saved);
-        alert("Bill Saved Successfully! ID: " + saved._id);
-      }
-
-      // Extract calculations from the response
-      const calculations = saved.calculations || saved;
-      setResult(calculations);
-
-      // clear form/editing state
-      resetForm();
-      setEditingId(null);
-
-      // refresh list so the header count and rows are up-to-date
-      await loadBills();
-      
-      // Deduct from selected budget: reduce balance and increase expenditure
-      try {
-        if (billForm.budgetId && calculations) {
-          const budget = budgets.find(b => b._id === billForm.budgetId);
-          const netPayable = Number(calculations.wit || calculations.net || 0);
-          // if the head has zero allocation we treat it as non‑expendable; leave values at 0
-          if (budget && budget.allocation > 0 && netPayable > 0) {
-            const newBalance = Math.max(0, (budget.balance || 0) - netPayable);
-            const newExpenditure = (budget.expenditure || 0) + netPayable;
-            await updateBudget(budget._id, { balance: newBalance, expenditure: newExpenditure });
-            // update local state
-            setBudgets(prev => prev.map(b => b._id === budget._id ? { ...b, balance: newBalance, expenditure: newExpenditure } : b));
-          }
+      const payload = buildWorkOrderPayload(billForm);
+      const calculations = result || calculateAudit(payload);
+      const existingBill = bills.find((bill) => bill.localKey === editingId) || null;
+      const localKey = existingBill?.localKey || editingId || createLocalKey("work-order");
+      const localRecord = normalizeCachedWorkOrder(
+        {
+          ...(existingBill || {}),
+          ...payload,
+          calculations,
+          status: existingBill?.status || "Draft",
+          createdAt: existingBill?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          localKey,
+          serverId: existingBill?.serverId || "",
+          syncStatus: online ? "syncing" : "pending"
         }
-      } catch (err) {
-        console.error('Budget update failed', err);
-        // don't block the save flow; inform user
-        alert('Warning: Budget update failed - ' + (err.message || err));
+      );
+
+      await upsertCachedWorkOrder(localRecord);
+      applyBillState(upsertBillCollection(bills, localRecord));
+      await savePendingSync(localKey, {
+        ...payload,
+        serverId: existingBill?.serverId || ""
+      });
+
+      setResult(calculations);
+      resetForm();
+
+      if (online) {
+        const syncResult = await syncPendingWorkOrders();
+        if (syncResult.error) {
+          alert("Bill saved locally. Sync failed and will retry later.");
+        } else {
+          alert(existingBill ? "Bill updated and synced." : "Bill saved and synced.");
+        }
+      } else {
+        setSyncMessage("Bill saved locally and queued for sync.");
+        alert("Bill saved locally. Use Sync when you are back online.");
       }
     } catch (error) {
       console.error("Save error:", error);
@@ -541,6 +909,7 @@ export default function App() {
   const resetForm = () => {
     setBillForm(buildInitialBillForm());
     setResult(null);
+    setEditingId(null);
   };
 
   const baseValueForDisplay = toNumber(result?.baseAmount ?? billForm.baseValue);
@@ -550,416 +919,79 @@ export default function App() {
 
   return (
     <div className="app">
-      <OfflineBanner />
+      <SyncStatusBar
+        online={online}
+        pendingSyncCount={pendingSyncCount}
+        liteMode={liteMode}
+        syncState={syncState}
+        syncMessage={syncMessage}
+        lastSyncLabel={formatSyncTime(lastSyncAt)}
+        onSync={() => syncPendingWorkOrders({ manual: true })}
+      />
+
       <div className="view-tabs">
-        <button 
-          className={view === "form" ? "tab-btn active" : "tab-btn"}
-          onClick={() => setView("form")}
-        >
+        <button className={view === "form" ? "tab-btn active" : "tab-btn"} onClick={() => setView("form")}>
           New Bill
         </button>
-        <button 
-          className={view === "list" ? "tab-btn active" : "tab-btn"}
-          onClick={() => setView("list")}
-        >
+        <button className={view === "list" ? "tab-btn active" : "tab-btn"} onClick={() => setView("list")}>
           Bill List ({bills.length})
         </button>
       </div>
 
-      {view === "form" && (
-        <form className="bill-form">
-          <div className="form-header">
-            <h1>MAHATMA GANDHI UNIVERSITY</h1>
-            <h2>Office of the Divisional Accountant</h2>
-            <h3>Bill Data Entry Form</h3>
-            <div className="bill-date">
-              <label>Bill Date:</label>
-              <input type="date" name="billDate" value={billForm.billDate} onChange={onChange} />
-            </div>
-          </div>
-
-          {/* Form1-aligned layout: Identification */}
-          <div className="form-section">
-            <h4 className="section-title">Form1 - Identification</h4>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Person/Company</label>
-                <select name="personCompany" value={billForm.personCompany} onChange={onChange}>
-                  <option>Person</option>
-                  <option>Company</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Contractor</label>
-                <div className="field-combo">
-                  <select name="contractorId" value={billForm.contractorId} onChange={onChange}>
-                    <option value="">Select Contractor</option>
-                    {contractors.map(c => (
-                      <option key={c._id} value={c._id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn inline-add-btn"
-                    onClick={() => {
-                      setNewContractorType(billForm.personCompany || "Person");
-                      setContractorModalOpen(true);
-                    }}
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Section</label>
-                <input type="text" name="section" value={billForm.section} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Head of Account</label>
-                <div className="field-combo">
-                  <select name="budgetId" value={billForm.budgetId} onChange={onChange}>
-                    <option value="">Select Budget</option>
-                    {budgets.map(b => (
-                      <option key={b._id} value={b._id}>{b.code} - {b.headOfAccount} (Bal: ₹{b.balance?.toLocaleString()})</option>
-                    ))}
-                  </select>
-                  <button type="button" className="btn inline-add-btn" onClick={() => setBudgetModalOpen(true)}>Add</button>
-                </div>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Bill Register No</label>
-                <input type="text" name="billRegisterNo" value={billForm.billRegisterNo} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Work Order Number</label>
-                <input type="text" name="workOrderNo" value={billForm.workOrderNo} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>WO Date</label>
-                <input type="date" name="wod" value={billForm.wod} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Agreement Number</label>
-                <input type="text" name="agreementNo" value={billForm.agreementNo} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>AG Date</label>
-                <input type="date" name="agdate" value={billForm.agdate} onChange={onChange} />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group full-width">
-                <label>Name of Work</label>
-                <textarea name="nameOfWork" value={billForm.nameOfWork} onChange={onChange} rows="2"></textarea>
-              </div>
-            </div>
-          </div>
-
-          {/* Form1-aligned layout: Reference & Completion */}
-          <div className="form-section">
-            <h4 className="section-title">Form1 - Reference & Completion</h4>
-            <div className="form-row">
-              <div className="form-group">
-                <label>ES/AS Number</label>
-                <input type="text" name="esasNo" value={billForm.esasNo} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>TS/QS Number</label>
-                <input type="text" name="tsqsNo" value={billForm.tsqsNo} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Date of Completion (as per agreement)</label>
-                <input type="date" name="dateOfCompletion" value={billForm.dateOfCompletion} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Actual Date of Completion</label>
-                <input type="date" name="actualDateOfCompletion" value={billForm.actualDateOfCompletion} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>DOC</label>
-                <input type="date" name="doc" value={billForm.doc} onChange={onChange} />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>CC</label>
-                <select name="cc" value={billForm.cc} onChange={onChange}>
-                  <option>I</option>
-                  <option>II</option>
-                  <option>III</option>
-                  <option>IV</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>CCN</label>
-                <select name="ccn" value={billForm.ccn} onChange={onChange}>
-                  <option>I</option>
-                  <option>II</option>
-                  <option>III</option>
-                  <option>IV</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Part/Final</label>
-                <select name="partFinal" value={billForm.partFinal} onChange={onChange}>
-                  <option>Part</option>
-                  <option>Final</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Fine</label>
-                <select name="fine" value={billForm.fine} onChange={onChange}>
-                  <option>No</option>
-                  <option>Yes</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Form1-aligned layout: Amounts */}
-          <div className="form-section">
-            <h4 className="section-title">Form1 - Amounts</h4>
-            <div className="form-row">
-              <div className="form-group">
-                <label>PAC</label>
-                <input type="number" name="pac" value={billForm.pac} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Bill Amount</label>
-                <input type="number" name="billAmount" value={billForm.billAmount} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Base Value</label>
-                <input type="number" name="baseValue" value={billForm.baseValue} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Estimate Amount</label>
-                <input type="number" name="estimateAmount" value={billForm.estimateAmount} onChange={onChange} />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Upto date Bill Amount</label>
-                <input type="number" name="uptodateBillAmount" value={billForm.uptodateBillAmount} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>GST to be Deducted</label>
-                <input type="number" name="gstToDeduct" value={billForm.gstToDeduct} readOnly />
-              </div>
-              <div className="form-group">
-                <label>Electricity Charges</label>
-                <input type="number" name="electricityCharges" value={billForm.electricityCharges} onChange={onChange} />
-              </div>
-            </div>
-          </div>
-
-          {/* Form1-aligned layout: Measurement & Book */}
-          <div className="form-section">
-            <h4 className="section-title">Form1 - Measurement & Book</h4>
-            <div className="form-row">
-              <div className="form-group">
-                <label>MBook Numbers</label>
-                <input type="text" name="mbookNumbers" value={billForm.mbookNumbers} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Pages</label>
-                <input type="text" name="pages" value={billForm.pages} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Measurement by AE</label>
-                <input type="date" name="measurementByAE" value={billForm.measurementByAE} onChange={onChange} />
-              </div>
-              <div className="form-group">
-                <label>Measurement by AEE</label>
-                <input type="date" name="measurementByAEE" value={billForm.measurementByAEE} onChange={onChange} />
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="form-actions">
-            <button type="button" className="btn btn-calculate" onClick={onPreview}>Calculate</button>
-            <button type="button" className="btn btn-audit-enfacement" onClick={() => openPreview('aes-register')}>Audit Enfacement Sheet Register</button>
-            <button type="button" className="btn btn-audit" onClick={() => openPreview('audit-notes')}>Audit Notes</button>
-            <button type="button" className="btn btn-note" onClick={() => openPreview('audit-enfacement-format')}>Note to F.O. / Enfacement Format</button>
-            <button type="button" className="btn btn-dsd" onClick={() => openPreview('schedule-formats')}>DSD Schedule</button>
-            <button type="button" className="btn btn-payment" onClick={() => openPreview('payment-register')}>Payment Register</button>
-            <button type="button" className="btn btn-save" onClick={onSave} disabled={saving}>
-              {saving ? "Saving..." : "Save Bill"}
-            </button>
-          </div>
-
-          {/* Calculation Result */}
-          {result && (
-            <div className="calculation-result">
-              <h4>Calculation Result</h4>
-              <div className="result-grid">
-                <div className="result-item addition">
-                  <span className="label">Base Value:</span>
-                  <span className="value">{formatAmount(baseValueForDisplay)}</span>
-                </div>
-                <div className="result-item addition">
-                  <span className="label">GST @ 18% (Added):</span>
-                  <span className="value">{formatAmount(gst18OnBaseForDisplay)}</span>
-                </div>
-                <div className="result-item addition">
-                  <span className="label">Bill Amount (Base + GST):</span>
-                  <span className="value">{formatAmount(billAmountForDisplay)}</span>
-                </div>
-                <div className="result-item deduction">
-                  <span className="label">GST:</span>
-                  <span className="value">{formatAmount(result.gst)}</span>
-                </div>
-                <div className="result-item deduction">
-                  <span className="label">Income Tax:</span>
-                  <span className="value">{formatAmount(result.it)}</span>
-                </div>
-                <div className="result-item deduction">
-                  <span className="label">WWC:</span>
-                  <span className="value">{formatAmount(result.wwc)}</span>
-                </div>
-                <div className="result-item">
-                  <span className="label">Retention:</span>
-                  <span className="value">{formatAmount(result.retention)}</span>
-                </div>
-                <div className="result-item">
-                  <span className="label">Fine:</span>
-                  <span className="value">{formatAmount(result.fine)}</span>
-                </div>
-                <div className="result-item">
-                  <span className="label">Agreement Fine:</span>
-                  <span className="value">{formatAmount(result.fineagr)}</span>
-                </div>
-                <div className="result-item highlight deduction">
-                  <span className="label">Total Deductions:</span>
-                  <span className="value">{formatAmount(result.dwoit)}</span>
-                </div>
-                <div className="result-item highlight">
-                  <span className="label">Net Payable (WIT):</span>
-                  <span className="value">{formatAmount(result.wit)}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Preview modal with iframe */}
-          {previewOpen && (
-            <div id="preview-print-container" className="preview-modal" onClick={() => setPreviewOpen(false)}>
-              <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
-                <div className="preview-header">
-                  <div className="preview-title">Preview</div>
-                  <div className="preview-actions">
-                    <button className="btn" onClick={printPreview}>Print / Save PDF</button>
-                    <button className="btn" onClick={() => setPreviewOpen(false)}>Close</button>
-                  </div>
-                </div>
-                <iframe
-                  id="preview-iframe"
-                  title="preview"
-                  srcDoc={previewPayload ? buildPrintPreviewDocument(previewPayload) : PRINT_PREVIEW_DOCUMENT}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Add Contractor Modal */}
-          {contractorModalOpen && (
-            <div className="preview-modal" onClick={() => setContractorModalOpen(false)}>
-              <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
-                <div className="preview-header">
-                  <div>Add Contractor</div>
-                  <button className="btn" onClick={() => setContractorModalOpen(false)}>Close</button>
-                </div>
-                <div style={{padding:12}}>
-                  <label style={{display:'block', marginBottom:6}}>Name</label>
-                  <input value={newContractorName} onChange={(e)=>setNewContractorName(e.target.value)} style={{width:'100%', padding:8, marginBottom:12}} />
-                  <label style={{display:'block', marginBottom:6}}>Type</label>
-                  <select value={newContractorType} onChange={(e)=>setNewContractorType(e.target.value)} style={{width:'100%', padding:8, marginBottom:12}}>
-                    <option>Person</option>
-                    <option>Company</option>
-                  </select>
-                  <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
-                    <button className="btn" onClick={() => setContractorModalOpen(false)}>Cancel</button>
-                    <button className="btn btn-save" onClick={submitNewContractor}>Add Contractor</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Add Budget Modal */}
-          {budgetModalOpen && (
-            <div className="preview-modal" onClick={() => setBudgetModalOpen(false)}>
-              <div className="preview-dialog" onClick={(e) => e.stopPropagation()}>
-                <div className="preview-header">
-                  <div>Add Budget Head</div>
-                  <button className="btn" onClick={() => setBudgetModalOpen(false)}>Close</button>
-                </div>
-                <div style={{padding:12}}>
-                  <label style={{display:'block', marginBottom:6}}>Code</label>
-                  <input value={newBudgetCode} onChange={(e)=>setNewBudgetCode(e.target.value)} style={{width:'100%', padding:8, marginBottom:8}} />
-                  <label style={{display:'block', marginBottom:6}}>Head Of Account</label>
-                  <input value={newBudgetHead} onChange={(e)=>setNewBudgetHead(e.target.value)} style={{width:'100%', padding:8, marginBottom:8}} />
-                  <label style={{display:'block', marginBottom:6}}>Allocation (₹)</label>
-                  <input type="number" value={newBudgetAllocation} onChange={(e)=>setNewBudgetAllocation(e.target.value)} style={{width:'100%', padding:8, marginBottom:12}} />
-                  <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
-                    <button className="btn" onClick={() => setBudgetModalOpen(false)}>Cancel</button>
-                    <button className="btn btn-save" onClick={submitNewBudget}>Add Budget</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </form>
-      )}
-
-      {view === "list" && (
-        <div className="bills-list">
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:12}}>
-            <h3 style={{margin:0}}>Saved Bills ({bills.length})</h3>
-            <div style={{display:'flex', gap:8, alignItems:'center'}}>
-              <input placeholder="Search bills..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} style={{padding:8}} onKeyDown={(e)=>{ if(e.key==='Enter') loadBills(); }} />
-              <button className="btn" onClick={()=>{ loadBills(); }}>Search</button>
-              <button className="btn" onClick={async ()=>{ setSearchTerm(''); await loadBills(); }}>Clear</button>
-            </div>
-          </div>
-          {billsLoading && <p>Loading bills...</p>}
-          {!billsLoading && bills.length === 0 && (
-            <p>No bills saved yet</p>
-          )}
-          {!billsLoading && filteredBills.length > 0 && (
-            <table className="bills-table">
-              <thead>
-                <tr>
-                  <th>Bill Reg No</th>
-                  <th>Contractor</th>
-                  <th>Base Amount</th>
-                  <th>Net Payable</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBills.map((bill) => (
-                  <tr key={bill._id} onClick={() => openBill(bill)} style={{cursor:'pointer'}}>
-                    <td>{bill.agno}</td>
-                    <td>{getContractorName(bill.contractorId)}</td>
-                    <td>₹{(bill.baseAmount||bill.ba||0).toLocaleString()}</td>
-                    <td>₹{((bill.calculations && bill.calculations.wit) || 0).toLocaleString()}</td>
-                    <td>{bill.status || 'Draft'}</td>
-                    <td>{bill.createdAt ? new Date(bill.createdAt).toLocaleDateString() : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      {view === "form" ? (
+        <BillFormView
+          billForm={billForm}
+          onChange={onChange}
+          contractors={contractors}
+          budgets={budgets}
+          contractorModalOpen={contractorModalOpen}
+          budgetModalOpen={budgetModalOpen}
+          setContractorModalOpen={setContractorModalOpen}
+          setBudgetModalOpen={setBudgetModalOpen}
+          newContractorName={newContractorName}
+          setNewContractorName={setNewContractorName}
+          newContractorType={newContractorType}
+          setNewContractorType={setNewContractorType}
+          newBudgetCode={newBudgetCode}
+          setNewBudgetCode={setNewBudgetCode}
+          newBudgetHead={newBudgetHead}
+          setNewBudgetHead={setNewBudgetHead}
+          newBudgetAllocation={newBudgetAllocation}
+          setNewBudgetAllocation={setNewBudgetAllocation}
+          onPreview={onPreview}
+          openPreview={openPreview}
+          onSave={onSave}
+          saving={saving}
+          online={online}
+          result={result}
+          formatAmount={formatAmount}
+          baseValueForDisplay={baseValueForDisplay}
+          gst18OnBaseForDisplay={gst18OnBaseForDisplay}
+          billAmountForDisplay={billAmountForDisplay}
+          previewOpen={previewOpen}
+          previewDocument={previewDocument}
+          printPreview={printPreview}
+          closePreview={closePreview}
+          submitNewContractor={submitNewContractor}
+          submitNewBudget={submitNewBudget}
+        />
+      ) : (
+        <BillsListView
+          bills={bills}
+          filteredBills={filteredBills}
+          billsLoading={billsLoading}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          onRefresh={() => loadBills({ silent: true })}
+          onClear={async () => {
+            setSearchTerm("");
+            await loadBills({ silent: true });
+          }}
+          onOpenBill={openBill}
+          getContractorName={getContractorName}
+          getSyncStatusClass={getSyncStatusClass}
+          getSyncStatusLabel={getSyncStatusLabel}
+        />
       )}
     </div>
   );
