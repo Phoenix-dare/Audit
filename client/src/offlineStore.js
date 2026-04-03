@@ -154,11 +154,20 @@ export async function replaceCachedWorkOrder(localKey, record) {
   });
 }
 
-export async function savePendingSync(localKey, payload) {
+export async function deleteCachedWorkOrder(localKey) {
+  return withStore(STORE_WORK_ORDERS, "readwrite", async (store) => {
+    await requestToPromise(store.delete(localKey));
+    return true;
+  });
+}
+
+export async function savePendingSync(localKey, payload, options = {}) {
   return withStore(STORE_QUEUE, "readwrite", async (store) => {
     const entry = {
       id: localKey,
       localKey,
+      action: options.action || "upsert",
+      serverId: options.serverId || payload?.serverId || "",
       payload: cloneRecord(payload),
       queuedAt: new Date().toISOString()
     };

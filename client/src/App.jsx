@@ -2,6 +2,7 @@ import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import {
   createBudget,
   createContractor,
+  deleteWorkOrder,
   getBudgets,
   getContractors,
   getWorkOrder,
@@ -12,6 +13,7 @@ import {
 import { calculateAudit } from "./calculateAudit";
 import {
   createLocalKey,
+  deleteCachedWorkOrder,
   getCachedBudgets,
   getCachedContractors,
   getCachedWorkOrders,
@@ -80,6 +82,25 @@ const upsertBillCollection = (items, bill) => {
   return sortBills(nextItems);
 };
 
+const removeBillByLocalKey = (items, localKey) =>
+  sortBills(items.filter((item) => item.localKey !== localKey));
+
+const matchesPendingDelete = (bill, entry) => {
+  if (!bill || !entry || entry.action !== "delete") return false;
+  if (entry.localKey && bill.localKey && entry.localKey === bill.localKey) return true;
+
+  const entryServerId = entry.serverId || entry.payload?.serverId || "";
+  if (!entryServerId) return false;
+
+  return bill.serverId === entryServerId || bill._id === entryServerId;
+};
+
+const filterQueuedDeletes = (items, pendingEntries) => {
+  const pendingDeletes = pendingEntries.filter((entry) => entry.action === "delete");
+  if (pendingDeletes.length === 0) return items;
+  return items.filter((bill) => !pendingDeletes.some((entry) => matchesPendingDelete(bill, entry)));
+};
+
 const mergeBudgetCollection = (currentBudgets, updates) => {
   const merged = [...currentBudgets];
   for (const update of updates) {
@@ -130,9 +151,13 @@ const mergeServerBills = (serverBills, cachedBills) => {
   return sortBills(merged);
 };
 
-const filterBills = (items, query) => {
+const filterBills = (items, query, contractors = []) => {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return items;
+
+  const contractorNames = new Map(
+    contractors.map((contractor) => [String(contractor?._id || ""), contractor?.name || ""])
+  );
 
   return items.filter((bill) =>
     [
@@ -142,7 +167,8 @@ const filterBills = (items, query) => {
       bill.nameOfWork,
       String(bill.baseAmount || bill.ba || ""),
       String(bill.coy || ""),
-      bill.syncStatus
+      bill.syncStatus,
+      contractorNames.get(String(bill.contractorId?._id || bill.contractorId || "")) || ""
     ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery))
   );
 };
@@ -313,7 +339,8 @@ export default function App() {
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const pendingSyncCount = bills.filter((bill) => bill.syncStatus && bill.syncStatus !== "synced").length;
-  const filteredBills = filterBills(bills, deferredSearchTerm || "");
+  const filteredBills = filterBills(bills, deferredSearchTerm || "", contractors);
+  const isEditing = Boolean(editingId);
 
   const applyBillState = (nextBills) => {
     const sortedBills = sortBills(nextBills);
@@ -382,18 +409,24 @@ export default function App() {
   const loadBills = async ({ silent = false } = {}) => {
     setBillsLoading(true);
     try {
-      const [remoteBills, cachedBills] = await Promise.all([getWorkOrders(), getCachedWorkOrders()]);
+      const [remoteBills, cachedBills, pendingEntries] = await Promise.all([
+        getWorkOrders(),
+        getCachedWorkOrders(),
+        getPendingSyncs()
+      ]);
       const mergedBills = mergeServerBills(Array.isArray(remoteBills) ? remoteBills : [], cachedBills);
-      await saveCachedWorkOrders(mergedBills);
-      applyBillState(mergedBills);
-      return mergedBills;
+      const visibleBills = filterQueuedDeletes(mergedBills, pendingEntries);
+      await saveCachedWorkOrders(visibleBills);
+      applyBillState(visibleBills);
+      return visibleBills;
     } catch (error) {
       console.error("Error loading bills:", error);
-      const cachedBills = sortBills(await getCachedWorkOrders());
-      if (cachedBills.length) {
-        applyBillState(cachedBills);
+      const [cachedBills, pendingEntries] = await Promise.all([getCachedWorkOrders(), getPendingSyncs()]);
+      const visibleBills = filterQueuedDeletes(sortBills(cachedBills), pendingEntries);
+      if (visibleBills.length) {
+        applyBillState(visibleBills);
         if (!silent) setSyncMessage("Showing locally saved bills.");
-        return cachedBills;
+        return visibleBills;
       }
       if (!silent) alert("Failed to load bills: " + error.message);
       return [];
@@ -428,7 +461,7 @@ export default function App() {
     setSyncMessage(`Syncing ${pendingEntries.length} change${pendingEntries.length === 1 ? "" : "s"}...`);
 
     let syncedCount = 0;
-    let workingBills = sortBills(await getCachedWorkOrders());
+    let workingBills = filterQueuedDeletes(sortBills(await getCachedWorkOrders()), pendingEntries);
     let workingBudgets = await getCachedBudgets();
 
     for (const entry of pendingEntries.sort((left, right) => {
@@ -436,6 +469,33 @@ export default function App() {
       const rightTime = new Date(right.queuedAt || 0).getTime();
       return leftTime - rightTime;
     })) {
+      if (entry.action === "delete") {
+        try {
+          const response = entry.serverId ? await deleteWorkOrder(entry.serverId) : { budgetUpdates: [] };
+          workingBills = removeBillByLocalKey(workingBills, entry.localKey);
+          await deleteCachedWorkOrder(entry.localKey);
+          await removePendingSync(entry.localKey);
+
+          if (Array.isArray(response.budgetUpdates) && response.budgetUpdates.length > 0) {
+            workingBudgets = mergeBudgetCollection(workingBudgets, response.budgetUpdates);
+            await saveCachedBudgets(workingBudgets);
+            startTransition(() => setBudgets(workingBudgets));
+          }
+
+          applyBillState(workingBills);
+          syncedCount += 1;
+        } catch (error) {
+          console.error("Delete sync failed:", error);
+          setSyncState("error");
+          setSyncMessage(error.message || "Delete sync failed.");
+          if (manual) {
+            alert("Delete sync failed: " + (error.message || error));
+          }
+          return { syncedCount, error };
+        }
+        continue;
+      }
+
       const currentBill = workingBills.find((bill) => bill.localKey === entry.localKey);
       if (currentBill) {
         const syncingBill = normalizeCachedWorkOrder(currentBill, { syncStatus: "syncing" });
@@ -497,17 +557,20 @@ export default function App() {
   useEffect(() => {
     const hydrate = async () => {
       try {
-        const [cachedContractors, cachedBudgets, cachedBills, cachedLastSyncAt] = await Promise.all([
-          getCachedContractors(),
-          getCachedBudgets(),
-          getCachedWorkOrders(),
-          getMeta(LAST_SYNC_META_KEY)
-        ]);
+        const [cachedContractors, cachedBudgets, cachedBills, cachedLastSyncAt, pendingEntries] =
+          await Promise.all([
+            getCachedContractors(),
+            getCachedBudgets(),
+            getCachedWorkOrders(),
+            getMeta(LAST_SYNC_META_KEY),
+            getPendingSyncs()
+          ]);
+        const visibleBills = filterQueuedDeletes(sortBills(cachedBills), pendingEntries);
 
         startTransition(() => {
           if (cachedContractors.length) setContractors(cachedContractors);
           if (cachedBudgets.length) setBudgets(cachedBudgets);
-          if (cachedBills.length) setBills(sortBills(cachedBills));
+          if (visibleBills.length) setBills(visibleBills);
         });
         if (cachedLastSyncAt) {
           setLastSyncAt(cachedLastSyncAt);
@@ -879,10 +942,17 @@ export default function App() {
 
       await upsertCachedWorkOrder(localRecord);
       applyBillState(upsertBillCollection(bills, localRecord));
-      await savePendingSync(localKey, {
-        ...payload,
-        serverId: existingBill?.serverId || ""
-      });
+      await savePendingSync(
+        localKey,
+        {
+          ...payload,
+          serverId: existingBill?.serverId || ""
+        },
+        {
+          action: "upsert",
+          serverId: existingBill?.serverId || ""
+        }
+      );
 
       setResult(calculations);
       resetForm();
@@ -912,6 +982,71 @@ export default function App() {
     setEditingId(null);
   };
 
+  const startNewBill = () => {
+    resetForm();
+    setView("form");
+  };
+
+  const onDeleteBill = async (bill) => {
+    if (!bill) return;
+
+    const localKey = bill.localKey || bill.serverId || bill._id || "";
+    const serverId = bill.serverId || (String(bill._id || "").startsWith("work-order:") ? "" : bill._id);
+    const billLabel = bill.agno || bill.billRegisterNo || "this bill";
+    const confirmMessage = serverId
+      ? online
+        ? `Delete ${billLabel}? This will remove the bill and roll back its budget usage.`
+        : `Delete ${billLabel} locally? It will be removed from the server once sync succeeds.`
+      : `Delete the local draft ${billLabel}? This cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      if (serverId) {
+        await savePendingSync(
+          localKey,
+          { serverId },
+          {
+            action: "delete",
+            serverId
+          }
+        );
+      } else {
+        await removePendingSync(localKey);
+      }
+
+      await deleteCachedWorkOrder(localKey);
+      applyBillState(removeBillByLocalKey(bills, localKey));
+
+      if ([localKey, serverId, bill._id].filter(Boolean).includes(editingId)) {
+        resetForm();
+      }
+
+      if (!serverId) {
+        setSyncMessage("Local draft deleted.");
+        return;
+      }
+
+      if (online) {
+        const syncResult = await syncPendingWorkOrders();
+        if (syncResult.error) {
+          alert("Bill removed locally. Delete sync failed and will retry later.");
+        } else {
+          setSyncMessage("Bill deleted.");
+          alert("Bill deleted.");
+        }
+      } else {
+        setSyncMessage("Bill removed locally and queued for deletion.");
+        alert("Bill removed locally. It will delete from the server when you are back online.");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Delete Error: " + (error.message || error));
+    }
+  };
+
   const baseValueForDisplay = toNumber(result?.baseAmount ?? billForm.baseValue);
   const gst18OnBaseForDisplay = roundTo2(baseValueForDisplay * BILL_GST_RATE);
   const billAmountForDisplay = toNumber(result?.billAmount ?? billForm.billAmount);
@@ -931,7 +1066,7 @@ export default function App() {
 
       <div className="view-tabs">
         <button className={view === "form" ? "tab-btn active" : "tab-btn"} onClick={() => setView("form")}>
-          New Bill
+          {isEditing ? "Editing Bill" : "New Bill"}
         </button>
         <button className={view === "list" ? "tab-btn active" : "tab-btn"} onClick={() => setView("list")}>
           Bill List ({bills.length})
@@ -941,7 +1076,9 @@ export default function App() {
       {view === "form" ? (
         <BillFormView
           billForm={billForm}
+          isEditing={isEditing}
           onChange={onChange}
+          onReset={startNewBill}
           contractors={contractors}
           budgets={budgets}
           contractorModalOpen={contractorModalOpen}
@@ -988,6 +1125,7 @@ export default function App() {
             await loadBills({ silent: true });
           }}
           onOpenBill={openBill}
+          onDeleteBill={onDeleteBill}
           getContractorName={getContractorName}
           getSyncStatusClass={getSyncStatusClass}
           getSyncStatusLabel={getSyncStatusLabel}

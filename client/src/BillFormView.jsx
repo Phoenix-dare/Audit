@@ -18,7 +18,9 @@ function SimpleModal({ title, open, onClose, children }) {
 
 export default function BillFormView({
   billForm,
+  isEditing,
   onChange,
+  onReset,
   contractors,
   budgets,
   contractorModalOpen,
@@ -57,7 +59,12 @@ export default function BillFormView({
       <div className="form-header">
         <h1>MAHATMA GANDHI UNIVERSITY</h1>
         <h2>Office of the Divisional Accountant</h2>
-        <h3>Bill Data Entry Form</h3>
+        <h3>{isEditing ? "Edit Bill Entry" : "Bill Data Entry Form"}</h3>
+        {isEditing && (
+          <div className="editing-chip">
+            Editing Bill: {billForm.billRegisterNo || "Untitled"}
+          </div>
+        )}
         <div className="bill-date">
           <label>Bill Date:</label>
           <input type="date" name="billDate" value={billForm.billDate} onChange={onChange} />
@@ -299,8 +306,21 @@ export default function BillFormView({
         <button type="button" className="btn btn-payment" onClick={() => openPreview("payment-register")}>
           Payment Register
         </button>
+        <button type="button" className="btn btn-secondary" onClick={onReset}>
+          {isEditing ? "Cancel Edit" : "Reset Form"}
+        </button>
         <button type="button" className="btn btn-save" onClick={onSave} disabled={saving}>
-          {saving ? "Saving..." : online ? "Save Bill" : "Save Locally"}
+          {saving
+            ? isEditing
+              ? "Updating..."
+              : "Saving..."
+            : isEditing
+              ? online
+                ? "Update Bill"
+                : "Update Locally"
+              : online
+                ? "Save Bill"
+                : "Save Locally"}
         </button>
       </div>
 

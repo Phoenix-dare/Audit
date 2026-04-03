@@ -1,5 +1,7 @@
 import { Router } from "express";
+import AuditNote from "../models/AuditNote.js";
 import Budget from "../models/Budget.js";
+import ExtraItem from "../models/ExtraItem.js";
 import WorkOrder from "../models/WorkOrder.js";
 import { calculateAudit } from "../services/auditCalculator.js";
 
@@ -86,6 +88,26 @@ async function syncWorkOrderRecord(payload, options = {}) {
   return { workOrder: existing, budgetUpdates };
 }
 
+async function deleteWorkOrderRecord(id) {
+  const existing = await WorkOrder.findById(id);
+  if (!existing) {
+    return { notFound: true };
+  }
+
+  const previousSnapshot = existing.toObject();
+  await Promise.all([
+    ExtraItem.deleteMany({ workOrderId: existing._id }),
+    AuditNote.deleteMany({ workOrderId: existing._id })
+  ]);
+  await existing.deleteOne();
+
+  const budgetUpdates = await applyBudgetImpact(previousSnapshot, null);
+  return {
+    deletedId: String(existing._id),
+    budgetUpdates
+  };
+}
+
 router.get("/", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) {
@@ -161,6 +183,22 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ error: "Work order not found" });
     }
     res.json(synced.workOrder);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const deleted = await deleteWorkOrderRecord(req.params.id);
+    if (deleted?.notFound) {
+      return res.status(404).json({ error: "Work order not found" });
+    }
+    res.json({
+      message: "Work order deleted",
+      deletedId: deleted.deletedId,
+      budgetUpdates: deleted.budgetUpdates
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

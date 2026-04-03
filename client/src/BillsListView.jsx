@@ -7,6 +7,7 @@ export default function BillsListView({
   onRefresh,
   onClear,
   onOpenBill,
+  onDeleteBill,
   getContractorName,
   getSyncStatusClass,
   getSyncStatusLabel
@@ -38,6 +39,7 @@ export default function BillsListView({
 
       {billsLoading && <p>Loading bills...</p>}
       {!billsLoading && bills.length === 0 && <p>No bills saved yet</p>}
+      {!billsLoading && bills.length > 0 && filteredBills.length === 0 && <p>No bills match your search.</p>}
       {!billsLoading && filteredBills.length > 0 && (
         <div className="bills-table-wrap">
           <table className="bills-table">
@@ -49,6 +51,7 @@ export default function BillsListView({
                 <th>Net Payable</th>
                 <th>Status</th>
                 <th>Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -67,6 +70,28 @@ export default function BillsListView({
                       : bill.createdAt
                         ? new Date(bill.createdAt).toLocaleDateString("en-IN")
                         : ""}
+                  </td>
+                  <td className="row-actions">
+                    <button
+                      type="button"
+                      className="btn btn-row-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenBill(bill);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-row-action btn-danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteBill(bill);
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}

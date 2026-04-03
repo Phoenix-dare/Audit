@@ -44,6 +44,17 @@ export async function updateWorkOrder(id, payload) {
   return res.json();
 }
 
+export async function deleteWorkOrder(id) {
+  const res = await fetch(`${API_BASE}/work-orders/${id}`, {
+    method: "DELETE"
+  });
+  if (res.status === 404) {
+    return { alreadyDeleted: true, budgetUpdates: [] };
+  }
+  if (!res.ok) throw new Error("Delete failed");
+  return res.json();
+}
+
 export async function syncWorkOrder(payload) {
   const res = await fetch(`${API_BASE}/work-orders/sync`, {
     method: "POST",
