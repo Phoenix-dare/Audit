@@ -19,6 +19,7 @@ function getBudgetImpactAmount(workOrderLike) {
 }
 
 async function applyBudgetImpact(previousWorkOrder, nextWorkOrder) {
+  // Budgets track the net payable amount, so edits/deletes are handled as "undo old impact, then apply new impact".
   const previousBudgetId = previousWorkOrder?.budgetId ? String(previousWorkOrder.budgetId) : "";
   const nextBudgetId = nextWorkOrder?.budgetId ? String(nextWorkOrder.budgetId) : "";
   const previousImpact = getBudgetImpactAmount(previousWorkOrder);
@@ -66,6 +67,7 @@ async function syncWorkOrderRecord(payload, options = {}) {
   if (preferredId) {
     existing = await WorkOrder.findById(preferredId);
   }
+  // Offline retries may not know the final Mongo id yet, so fall back to the bill register number.
   if (!existing && matchByAgno && payload.agno) {
     existing = await WorkOrder.findOne({ agno: payload.agno });
   }
@@ -95,6 +97,7 @@ async function deleteWorkOrderRecord(id) {
   }
 
   const previousSnapshot = existing.toObject();
+  // Remove dependent records first so the bill does not leave orphaned extra items or audit notes behind.
   await Promise.all([
     ExtraItem.deleteMany({ workOrderId: existing._id }),
     AuditNote.deleteMany({ workOrderId: existing._id })

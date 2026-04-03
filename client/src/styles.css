@@ -933,6 +933,13 @@ body {
   backdrop-filter: blur(6px);
 }
 
+.preview-modal.preview-fullscreen {
+  align-items: stretch;
+  justify-content: stretch;
+  background: #e7edf3;
+  backdrop-filter: none;
+}
+
 .preview-dialog {
   width: 100vw;
   height: 100vh;
@@ -943,6 +950,11 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: none;
+}
+
+.preview-modal.preview-fullscreen .preview-dialog {
+  width: 100%;
+  height: 100%;
 }
 
 .preview-header {
@@ -975,6 +987,12 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   background: #dbe1ea;
+}
+
+html.preview-modal-open,
+body.preview-modal-open {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .preview-dialog.modal-dialog {

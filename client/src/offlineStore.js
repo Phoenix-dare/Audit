@@ -81,6 +81,7 @@ export function normalizeCachedWorkOrder(record, overrides = {}) {
     ...cloneRecord(overrides)
   };
 
+  // Every cached bill keeps a stable local key even before the server assigns a real _id.
   const serverId = merged.serverId || (merged._id && !String(merged._id).startsWith("work-order:") ? merged._id : "");
   const localKey = merged.localKey || serverId || createLocalKey("work-order");
 
@@ -166,6 +167,7 @@ export async function savePendingSync(localKey, payload, options = {}) {
     const entry = {
       id: localKey,
       localKey,
+      // The same queue handles normal saves and deferred deletes while offline.
       action: options.action || "upsert",
       serverId: options.serverId || payload?.serverId || "",
       payload: cloneRecord(payload),

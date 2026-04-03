@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+
 function SimpleModal({ title, open, onClose, children }) {
   if (!open) return null;
 
@@ -54,7 +56,31 @@ export default function BillFormView({
   submitNewContractor,
   submitNewBudget
 }) {
+  const previewModal =
+    previewOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div id="preview-print-container" className="preview-modal preview-fullscreen" onClick={closePreview}>
+            <div className="preview-dialog" onClick={(event) => event.stopPropagation()}>
+              <div className="preview-header">
+                <div className="preview-title">Preview</div>
+                <div className="preview-actions">
+                  <button type="button" className="btn" onClick={printPreview}>
+                    Print / Save PDF
+                  </button>
+                  <button type="button" className="btn" onClick={closePreview}>
+                    Close
+                  </button>
+                </div>
+              </div>
+              <iframe id="preview-iframe" title="preview" srcDoc={previewDocument} />
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
+    <>
     <form className="bill-form">
       <div className="form-header">
         <h1>MAHATMA GANDHI UNIVERSITY</h1>
@@ -376,25 +402,6 @@ export default function BillFormView({
         </div>
       )}
 
-      {previewOpen && (
-        <div id="preview-print-container" className="preview-modal" onClick={closePreview}>
-          <div className="preview-dialog" onClick={(event) => event.stopPropagation()}>
-            <div className="preview-header">
-              <div className="preview-title">Preview</div>
-              <div className="preview-actions">
-                <button type="button" className="btn" onClick={printPreview}>
-                  Print / Save PDF
-                </button>
-                <button type="button" className="btn" onClick={closePreview}>
-                  Close
-                </button>
-              </div>
-            </div>
-            <iframe id="preview-iframe" title="preview" srcDoc={previewDocument} />
-          </div>
-        </div>
-      )}
-
       <SimpleModal title="Add Contractor" open={contractorModalOpen} onClose={() => setContractorModalOpen(false)}>
         <label className="modal-label">Name</label>
         <input
@@ -439,5 +446,7 @@ export default function BillFormView({
         </div>
       </SimpleModal>
     </form>
+    {previewModal}
+    </>
   );
 }

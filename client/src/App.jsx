@@ -66,6 +66,7 @@ const getBillTimestamp = (bill) => {
 const sortBills = (items) => [...items].sort((a, b) => getBillTimestamp(b) - getBillTimestamp(a));
 
 const sameBill = (left, right) => {
+  // A bill can exist as a local draft, a synced server record, or both during sync.
   if (!left || !right) return false;
   if (left.localKey && right.localKey && left.localKey === right.localKey) return true;
   if (left.serverId && right.serverId && left.serverId === right.serverId) return true;
@@ -96,6 +97,7 @@ const matchesPendingDelete = (bill, entry) => {
 };
 
 const filterQueuedDeletes = (items, pendingEntries) => {
+  // Once a delete is queued, keep the bill hidden locally so it does not reappear before sync finishes.
   const pendingDeletes = pendingEntries.filter((entry) => entry.action === "delete");
   if (pendingDeletes.length === 0) return items;
   return items.filter((bill) => !pendingDeletes.some((entry) => matchesPendingDelete(bill, entry)));
@@ -120,6 +122,7 @@ const mergeServerBills = (serverBills, cachedBills) => {
       sameBill(candidate, { _id: serverBill._id, serverId: serverBill._id, agno: serverBill.agno })
     );
 
+    // If the local copy still has unsynced changes, preserve it instead of overwriting it with stale server data.
     if (matchingCachedBill && matchingCachedBill.syncStatus && matchingCachedBill.syncStatus !== "synced") {
       return normalizeCachedWorkOrder(
         {
@@ -270,6 +273,7 @@ const buildCalculationPayload = (form) => ({
 });
 
 const buildWorkOrderPayload = (form) => ({
+  // The API, calculator, and print templates still read a mix of old and new field names.
   agno: form.billRegisterNo,
   billRegisterNo: form.billRegisterNo,
   billDate: form.billDate,
@@ -471,6 +475,7 @@ export default function App() {
     })) {
       if (entry.action === "delete") {
         try {
+          // Delete entries remove the cached row first, then ask the server to delete and undo any budget usage.
           const response = entry.serverId ? await deleteWorkOrder(entry.serverId) : { budgetUpdates: [] };
           workingBills = removeBillByLocalKey(workingBills, entry.localKey);
           await deleteCachedWorkOrder(entry.localKey);
@@ -616,7 +621,13 @@ export default function App() {
 
   useEffect(() => {
     document.body.classList.toggle("preview-print-active", previewOpen);
-    return () => document.body.classList.remove("preview-print-active");
+    document.body.classList.toggle("preview-modal-open", previewOpen);
+    document.documentElement.classList.toggle("preview-modal-open", previewOpen);
+    return () => {
+      document.body.classList.remove("preview-print-active");
+      document.body.classList.remove("preview-modal-open");
+      document.documentElement.classList.remove("preview-modal-open");
+    };
   }, [previewOpen]);
 
   useEffect(() => {
